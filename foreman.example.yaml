@@ -1,0 +1,26 @@
+# Foreman sample configuration
+# Place this file at your project root as foreman.yaml
+
+project_root: .
+password: admin
+port: 9090
+host: 127.0.0.1
+log_retention_lines: 5000
+
+services:
+  echo-test:
+    label: "Echo Test Service"
+    group: test
+    command: bash
+    args: ["-c", "while true; do echo \"$(date): hello from echo-test\"; sleep 2; done"]
+    auto_start: false
+
+  date-logger:
+    label: "Date Logger"
+    group: test
+    command: bash
+    args: ["-c", "for i in $(seq 1 100); do echo \"Log line $i at $(date)\"; sleep 1; done"]
+    auto_start: false
+    build:
+      command: echo
+      args: ["build step would run here"]
