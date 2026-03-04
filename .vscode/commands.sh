@@ -61,10 +61,61 @@ case "${1:-help}" in
         echo "✅ All platforms built"
         ls -lh bin/
         ;;
+    release)
+        echo "=== Release New Version ==="
+
+        # Ensure working tree is clean
+        if ! git diff --quiet || ! git diff --cached --quiet; then
+            echo "Error: working tree has uncommitted changes. Commit or stash first."
+            exit 1
+        fi
+
+        # Get the latest version tag (default v0.0.0 if none)
+        latest=$(git tag --sort=-v:refname --list 'v*' | head -n1)
+        if [ -z "$latest" ]; then
+            latest="v0.0.0"
+        fi
+
+        # Parse major.minor.patch
+        version="${latest#v}"
+        IFS='.' read -r major minor patch <<< "$version"
+        major="${major:-0}"; minor="${minor:-0}"; patch="${patch:-0}"
+
+        echo "Current version: v${major}.${minor}.${patch}"
+        echo ""
+        echo "Bump type:"
+        echo "  1) patch  (v${major}.${minor}.$((patch+1)))"
+        echo "  2) minor  (v${major}.$((minor+1)).0)"
+        echo "  3) major  (v$((major+1)).0.0)"
+        printf "Select [1/2/3] (default: 1): "
+        read -r choice
+
+        case "${choice:-1}" in
+            1) patch=$((patch+1)) ;;
+            2) minor=$((minor+1)); patch=0 ;;
+            3) major=$((major+1)); minor=0; patch=0 ;;
+            *) echo "Invalid choice"; exit 1 ;;
+        esac
+
+        new_tag="v${major}.${minor}.${patch}"
+        echo ""
+        echo "New version: $new_tag"
+        printf "Proceed? [y/N]: "
+        read -r confirm
+        if [ "${confirm,,}" != "y" ]; then
+            echo "Aborted."
+            exit 0
+        fi
+
+        git tag -a "$new_tag" -m "Release $new_tag" || exit 1
+        git push origin "$new_tag" || exit 1
+        echo ""
+        echo "✅ Pushed tag $new_tag — GitHub Actions will create the release."
+        ;;
     help|*)
         echo "Foreman Development Commands"
         echo ""
-        echo "Usage: bash tools/foreman/.vscode/commands.sh <command>"
+        echo "Usage: bash .vscode/commands.sh <command>"
         echo ""
         echo "Commands:"
         echo "  build         Build foreman binary (debug)"
@@ -75,6 +126,7 @@ case "${1:-help}" in
         echo "  fmt           Format all Go files"
         echo "  clean         Remove build artifacts"
         echo "  cross-build   Build for all platforms"
+        echo "  release       Increment version tag and trigger a GitHub release"
         echo "  help          Show this help"
         ;;
 esac
