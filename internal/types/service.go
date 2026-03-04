@@ -46,6 +46,7 @@ type ServiceInfo struct {
 	ExitCode   *int          `json:"exit_code,omitempty"`
 	AutoStart  bool          `json:"auto_start"`
 	HasBuild   bool          `json:"has_build"`
+	URL        string        `json:"url,omitempty"`
 	Children   []ServiceInfo `json:"children,omitempty"`
 }
 

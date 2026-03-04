@@ -244,6 +244,7 @@ func (p *Process) Info() types.ServiceInfo {
 		Restarts:  p.restarts,
 		AutoStart: p.Config.AutoStart,
 		HasBuild:  p.Config.Build != nil,
+		URL:       p.Config.URL,
 	}
 
 	if p.status == types.StatusRunning {

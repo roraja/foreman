@@ -334,6 +334,7 @@ func (cm *ComposeManager) Info() types.ServiceInfo {
 		Type:      types.TypeDockerCompose,
 		Status:    types.StatusStopped,
 		AutoStart: cm.Config.AutoStart,
+		URL:       cm.Config.URL,
 	}
 
 	runningCount := 0

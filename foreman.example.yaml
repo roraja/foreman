@@ -13,6 +13,7 @@ services:
     group: test
     command: bash
     args: ["-c", "while true; do echo \"$(date): hello from echo-test\"; sleep 2; done"]
+    url: "http://localhost:3000"
     auto_start: false
 
   date-logger:

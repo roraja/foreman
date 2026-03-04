@@ -32,6 +32,7 @@ type ServiceConfig struct {
 	Command    string            `yaml:"command"`
 	Args       []string          `yaml:"args"`
 	WorkingDir string            `yaml:"working_dir"`
+	URL        string            `yaml:"url"`
 	Shell      bool              `yaml:"shell"`
 	ComposeFile string           `yaml:"compose_file"`
 	EnvFile    string            `yaml:"env_file"`

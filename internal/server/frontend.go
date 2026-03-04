@@ -485,6 +485,9 @@ function renderService(s, isChild) {
   if (s.uptime && s.status === 'running') html += '<span class="service-uptime">↑ ' + escHtml(s.uptime) + '</span>';
 
   html += '<div class="service-actions" onclick="event.stopPropagation()">';
+  if (s.url) {
+    html += '<button class="btn btn-sm btn-blue" onclick="window.open(\'' + escAttr(s.url) + '\',\'_blank\')" title="Open ' + escAttr(s.url) + '">🔗 Open</button>';
+  }
   if (s.has_build) {
     const buildPending = pendingActions[s.id] === 'building';
     html += '<button class="btn btn-sm" onclick="serviceAction(\'' + escAttr(s.id) + '\',\'build\')" title="Build"' + (isPending ? ' disabled' : '') + '>' + (buildPending ? '<span class="spinner spinner-sm"></span>' : '🔨') + '</button>';
