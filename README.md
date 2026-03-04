@@ -2,19 +2,35 @@
 
 A single-binary, cross-platform local services monitor and manager. Start, stop, restart, build, and monitor all your development services from one web dashboard.
 
+## Install
+
+**One-liner** (downloads to `~/.local/bin`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/roraja/foreman/main/install.sh | sh
+```
+
+Or specify a version or install directory:
+
+```bash
+FOREMAN_VERSION=v0.0.3 INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/roraja/foreman/main/install.sh | sh
+```
+
+**From source:**
+
+```bash
+go build -o bin/foreman ./cmd/foreman
+```
+
 ## Quick Start
 
 ```bash
-# Build
-cd tools/foreman
-GO111MODULE=on go build -o bin/foreman ./cmd/foreman
-
 # Create a config file
 cp foreman.example.yaml foreman.yaml
 # Edit foreman.yaml to define your services
 
 # Run
-./bin/foreman -c foreman.yaml
+foreman -c foreman.yaml
 # Open http://127.0.0.1:9090 in your browser
 ```
 
@@ -54,6 +70,67 @@ services:
     type: docker-compose
     compose_file: docker-compose.yml
     auto_start: true
+```
+
+### Environment Variables
+
+Foreman provides several ways to inject environment variables into services:
+
+**1. Root-level `.env` file** — shared across all services:
+
+```yaml
+env_file: .env
+services:
+  my-api:
+    command: ./bin/api-server
+```
+
+**2. Per-service `.env` file** — overrides values from the root env file:
+
+```yaml
+services:
+  my-api:
+    command: ./bin/api-server
+    env_file: services/api/.env
+```
+
+**3. Inline `env` map** — highest priority, overrides both env files:
+
+```yaml
+services:
+  my-api:
+    command: ./bin/api-server
+    env_file: .env
+    env:
+      PORT: "8080"
+      LOG_LEVEL: debug
+      DATABASE_URL: "postgres://localhost:5432/mydb"
+```
+
+**4. YAML-level variable interpolation** — reference host environment variables anywhere in the config using `${VAR}` or `${VAR:-default}`:
+
+```yaml
+password: "${FOREMAN_PASSWORD:-admin}"
+services:
+  my-api:
+    command: ./bin/api-server
+    env:
+      API_KEY: "${API_KEY}"
+      NODE_ENV: "${NODE_ENV:-development}"
+```
+
+**Priority order** (highest wins): inline `env` > per-service `env_file` > root `env_file`.
+
+The `.env` file format supports `KEY=value` pairs, blank lines, `#` comments, and optional quoting:
+
+```env
+# Database
+DATABASE_URL="postgres://localhost:5432/mydb"
+REDIS_URL=redis://localhost:6379
+
+# App
+LOG_LEVEL=debug
+SECRET_KEY='s3cret'
 ```
 
 ## CLI Usage

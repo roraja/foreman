@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"fmt"
 	"log"
+	"sort"
 	"sync"
 
 	"github.com/anthropic/foreman/internal/config"
@@ -159,6 +160,13 @@ func (o *Orchestrator) ListServices() []types.ServiceInfo {
 	for _, cm := range o.composeManagers {
 		result = append(result, cm.Info())
 	}
+
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Group != result[j].Group {
+			return result[i].Group < result[j].Group
+		}
+		return result[i].ID < result[j].ID
+	})
 
 	return result
 }

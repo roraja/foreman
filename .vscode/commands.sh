@@ -39,6 +39,15 @@ case "${1:-help}" in
         go vet ./...
         echo "✅ No issues found"
         ;;
+    install)
+        echo "=== Installing Foreman ==="
+        CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/foreman ./cmd/foreman
+        INSTALL_DIR="$HOME/.local/bin"
+        mkdir -p "$INSTALL_DIR"
+        cp bin/foreman "$INSTALL_DIR/foreman"
+        echo "✅ Installed: $INSTALL_DIR/foreman"
+        ls -lh "$INSTALL_DIR/foreman"
+        ;;
     clean)
         echo "=== Cleaning ==="
         rm -rf bin/
@@ -120,6 +129,7 @@ case "${1:-help}" in
         echo "Commands:"
         echo "  build         Build foreman binary (debug)"
         echo "  build-release Build foreman binary (release, stripped)"
+        echo "  install       Build and install foreman to ~/.local/bin"
         echo "  run [config]  Run foreman with go run (default: foreman.yaml)"
         echo "  test          Run all tests"
         echo "  lint          Run go vet"
