@@ -100,6 +100,7 @@ func (p *Process) Start() error {
 		p.status = types.StatusCrashed
 		cancel()
 		log.Printf("[%s] failed to start: %v", p.ID, err)
+		p.emitLog("stderr", fmt.Sprintf("Failed to start: %v", err))
 		return fmt.Errorf("starting process: %w", err)
 	}
 
@@ -192,6 +193,7 @@ func (p *Process) Build() error {
 		p.status = types.StatusStopped
 		p.mu.Unlock()
 		log.Printf("[%s] build failed to start: %v", p.ID, err)
+		p.emitLog("stderr", fmt.Sprintf("Build failed to start: %v", err))
 		return fmt.Errorf("build failed to start: %w", err)
 	}
 
@@ -209,6 +211,7 @@ func (p *Process) Build() error {
 
 	if err != nil {
 		log.Printf("[%s] build failed: %v", p.ID, err)
+		p.emitLog("stderr", fmt.Sprintf("Build failed: %v", err))
 		return fmt.Errorf("build failed: %w", err)
 	}
 	log.Printf("[%s] build completed successfully", p.ID)
@@ -281,6 +284,17 @@ func (p *Process) GetEnv() map[string]string {
 	return p.Config.Env
 }
 
+// emitLog adds a log entry to the buffer and broadcasts it to subscribers.
+func (p *Process) emitLog(stream, line string) {
+	entry := types.LogEntry{
+		Timestamp: time.Now(),
+		Stream:    stream,
+		Line:      line,
+	}
+	p.logs.Add(entry)
+	p.broadcast(entry)
+}
+
 func (p *Process) streamOutput(r io.Reader, stream string) {
 	scanner := bufio.NewScanner(r)
 	// Allow larger lines (1MB)
@@ -319,12 +333,15 @@ func (p *Process) waitForExit() {
 			code := exitErr.ExitCode()
 			p.exitCode = &code
 			log.Printf("[%s] process exited with code %d", p.ID, code)
+			p.emitLog("stderr", fmt.Sprintf("Process exited with code %d", code))
 		} else {
 			log.Printf("[%s] process exited with error: %v", p.ID, err)
+			p.emitLog("stderr", fmt.Sprintf("Process exited with error: %v", err))
 		}
 		if p.status != types.StatusStopping {
 			p.status = types.StatusCrashed
 			log.Printf("[%s] process crashed (was not being stopped)", p.ID)
+			p.emitLog("stderr", "Process crashed unexpectedly")
 		} else {
 			p.status = types.StatusStopped
 		}
