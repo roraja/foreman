@@ -26,20 +26,22 @@ type Config struct {
 
 // ServiceConfig defines a single service in the configuration.
 type ServiceConfig struct {
-	Label      string            `yaml:"label"`
-	Group      string            `yaml:"group"`
-	Type       string            `yaml:"type"`
-	Command    string            `yaml:"command"`
-	Args       []string          `yaml:"args"`
-	WorkingDir string            `yaml:"working_dir"`
-	URL        string            `yaml:"url"`
-	Shell      bool              `yaml:"shell"`
-	ComposeFile string           `yaml:"compose_file"`
-	EnvFile    string            `yaml:"env_file"`
-	Env        map[string]string `yaml:"env"`
-	AutoStart  bool              `yaml:"auto_start"`
-	DependsOn  []string          `yaml:"depends_on"`
-	Build      *BuildConfig      `yaml:"build"`
+	Label        string            `yaml:"label"`
+	Group        string            `yaml:"group"`
+	Type         string            `yaml:"type"`
+	Command      string            `yaml:"command"`
+	Args         []string          `yaml:"args"`
+	WorkingDir   string            `yaml:"working_dir"`
+	URL          string            `yaml:"url"`
+	Shell        bool              `yaml:"shell"`
+	ComposeFile  string            `yaml:"compose_file"`
+	EnvFile      string            `yaml:"env_file"`
+	Env          map[string]string `yaml:"env"`
+	AutoStart    bool              `yaml:"auto_start"`
+	DependsOn    []string          `yaml:"depends_on"`
+	Build        *BuildConfig      `yaml:"build"`
+	BinarySource string            `yaml:"binary_source"`
+	BinaryName   string            `yaml:"binary_name"`
 }
 
 // BuildConfig defines how to build a service before starting it.

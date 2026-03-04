@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/anthropic/foreman/internal/binary"
 	"github.com/anthropic/foreman/internal/config"
 	"github.com/anthropic/foreman/internal/types"
 )
@@ -52,7 +53,20 @@ func (p *Process) Start() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	log.Printf("[%s] starting process: %s %v (dir: %s)", p.ID, p.Config.Command, p.Config.Args, p.Config.WorkingDir)
+	// If binary_source is configured, ensure the binary is downloaded
+	command := p.Config.Command
+	if p.Config.BinarySource != "" {
+		binPath, err := binary.EnsureBinary(p.Config.BinarySource, p.Config.BinaryName)
+		if err != nil {
+			log.Printf("[%s] failed to ensure binary from %s: %v", p.ID, p.Config.BinarySource, err)
+			p.emitLog("stderr", fmt.Sprintf("Failed to download binary: %v", err))
+			return fmt.Errorf("ensuring binary for %s: %w", p.ID, err)
+		}
+		command = binPath
+		log.Printf("[%s] using downloaded binary: %s", p.ID, binPath)
+	}
+
+	log.Printf("[%s] starting process: %s %v (dir: %s)", p.ID, command, p.Config.Args, p.Config.WorkingDir)
 
 	if p.status == types.StatusRunning || p.status == types.StatusStarting {
 		log.Printf("[%s] already running, skipping start", p.ID)
@@ -62,7 +76,7 @@ func (p *Process) Start() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	p.cancel = cancel
 
-	cmd := exec.CommandContext(ctx, p.Config.Command, p.Config.Args...)
+	cmd := exec.CommandContext(ctx, command, p.Config.Args...)
 	cmd.Dir = p.Config.WorkingDir
 	setSysProcAttr(cmd)
 

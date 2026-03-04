@@ -25,3 +25,20 @@ services:
     build:
       command: echo
       args: ["build step would run here"]
+
+  # Example using binary_source to download and run a GitHub release binary.
+  # Foreman will auto-download the binary for the current OS/arch to ~/.foreman/bin/
+  # on first start.
+  # remote-service:
+  #   label: "Remote Service"
+  #   group: test
+  #   binary_source: "https://github.com/roraja/foreman/releases/tag/v0.0.2"
+  #   args: ["--port", "8080"]
+  #   auto_start: false
+  #
+  # If the release asset name differs from the repo name, specify binary_name:
+  # markdown-viewer:
+  #   label: "Markdown Viewer"
+  #   binary_source: "https://github.com/roraja/markdown-go/releases/tag/v1.0.1"
+  #   binary_name: mdviewer
+  #   args: ["--port", "9966"]
