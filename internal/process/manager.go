@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/anthropic/foreman/internal/config"
@@ -65,7 +64,7 @@ func (p *Process) Start() error {
 
 	cmd := exec.CommandContext(ctx, p.Config.Command, p.Config.Args...)
 	cmd.Dir = p.Config.WorkingDir
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setSysProcAttr(cmd)
 
 	// Set environment
 	env := os.Environ()
@@ -136,24 +135,9 @@ func (p *Process) Stop() error {
 		p.cancel()
 	}
 
-	// Send SIGTERM to process group
+	// Gracefully terminate the process (platform-specific)
 	if p.cmd != nil && p.cmd.Process != nil {
-		_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGTERM)
-
-		// Wait up to 10 seconds, then SIGKILL
-		done := make(chan struct{})
-		go func() {
-			_ = p.cmd.Wait()
-			close(done)
-		}()
-
-		select {
-		case <-done:
-			log.Printf("[%s] process exited gracefully", p.ID)
-		case <-time.After(10 * time.Second):
-			log.Printf("[%s] process did not exit after 10s, sending SIGKILL", p.ID)
-			_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
-		}
+		gracefulStop(p.cmd, p.ID)
 	}
 
 	p.status = types.StatusStopped
