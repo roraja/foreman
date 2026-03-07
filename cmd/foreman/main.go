@@ -22,6 +22,7 @@ import (
 	"github.com/anthropic/foreman/internal/logging"
 	"github.com/anthropic/foreman/internal/orchestrator"
 	"github.com/anthropic/foreman/internal/server"
+	"gopkg.in/yaml.v3"
 )
 
 func main() {
@@ -35,6 +36,9 @@ func main() {
 			return
 		case "install":
 			cmdInstall(os.Args[2:])
+			return
+		case "runOnBoot":
+			cmdRunOnBoot(os.Args[2:])
 			return
 		case "help", "--help", "-h":
 			printUsage()
@@ -54,6 +58,7 @@ Usage:
   foreman commands [flags]                  List configured commands
   foreman run <command-id> [flags] [-- extra-args]  Run a command
   foreman install [flags]                   Install foreman as a user systemd service
+  foreman runOnBoot [flags]                 Register this project to start on boot
   foreman help                              Show this help
 
 Server flags:
@@ -78,6 +83,10 @@ Install flags:
   --host <host>           Host for the foreman service (default: 127.0.0.1)
   --no-start              Don't start the service after installing
 
+RunOnBoot flags:
+  -c, --config <path>     Path to foreman.yaml (default: foreman.yaml)
+  --id <name>             Service ID in global config (default: derived from folder name)
+
 Examples:
   foreman -c foreman.yaml                         Start dashboard
   foreman commands -c foreman.yaml                List all commands
@@ -89,6 +98,8 @@ Examples:
   foreman run build -- --verbose                   With extra args
   foreman install                                  Install global foreman service
   foreman install --port 8080                      Install on custom port
+  foreman runOnBoot                                Register current project to start on boot
+  foreman runOnBoot -c myconfig.yaml --id my-proj  Register with custom ID
 `)
 }
 
@@ -487,6 +498,207 @@ func cmdInstall(args []string) {
 	fmt.Println("  systemctl --user restart foreman   Restart the service")
 	fmt.Println("  systemctl --user stop foreman      Stop the service")
 	fmt.Println("  journalctl --user -u foreman -f    Follow logs")
+}
+
+func cmdRunOnBoot(args []string) {
+	if runtime.GOOS != "linux" {
+		fmt.Fprintln(os.Stderr, "Error: foreman runOnBoot is only supported on Linux (requires systemd)")
+		os.Exit(1)
+	}
+
+	fs := flag.NewFlagSet("runOnBoot", flag.ExitOnError)
+	configPath := fs.String("c", "foreman.yaml", "Path to foreman.yaml config file")
+	fs.StringVar(configPath, "config", "foreman.yaml", "Path to foreman.yaml config file")
+	serviceID := fs.String("id", "", "Service ID in global config (default: derived from folder name)")
+	_ = fs.Parse(args)
+
+	// Resolve the local config to an absolute path
+	absConfig, err := filepath.Abs(*configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error resolving config path: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Validate local config exists and is loadable
+	if _, err := os.Stat(absConfig); os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "Error: config file not found: %s\n", absConfig)
+		os.Exit(1)
+	}
+	if _, err := config.Load(absConfig); err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config %s: %v\n", absConfig, err)
+		os.Exit(1)
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: cannot determine home directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	foremanDir := filepath.Join(home, ".foreman")
+	foremanBin := filepath.Join(foremanDir, "foreman")
+	globalConfig := filepath.Join(foremanDir, "foreman.yaml")
+
+	// Ensure foreman is installed as a systemd service
+	if !isBootloaderInstalled(foremanBin, globalConfig) {
+		fmt.Println("Foreman bootloader not installed. Running install...")
+		cmdInstall([]string{})
+		fmt.Println()
+	}
+
+	// Derive service ID from folder name if not provided
+	projectDir := filepath.Dir(absConfig)
+	if *serviceID == "" {
+		*serviceID = sanitizeServiceID(filepath.Base(projectDir))
+	}
+
+	// Read and update global config
+	globalData, err := os.ReadFile(globalConfig)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading global config: %v\n", err)
+		os.Exit(1)
+	}
+
+	var globalCfg yaml.Node
+	if err := yaml.Unmarshal(globalData, &globalCfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing global config: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := upsertService(&globalCfg, *serviceID, foremanBin, absConfig, projectDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Error updating global config: %v\n", err)
+		os.Exit(1)
+	}
+
+	out, err := yaml.Marshal(&globalCfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error marshaling global config: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := os.WriteFile(globalConfig, out, 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing global config: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("✓ Registered service %q in %s\n", *serviceID, globalConfig)
+	fmt.Printf("  Config:      %s\n", absConfig)
+	fmt.Printf("  Working Dir: %s\n", projectDir)
+	fmt.Println()
+	fmt.Println("The global foreman will start this project's foreman on boot.")
+	fmt.Println("To apply immediately, restart the global foreman:")
+	fmt.Println("  systemctl --user restart foreman")
+}
+
+// isBootloaderInstalled checks if the foreman binary and global config exist.
+func isBootloaderInstalled(foremanBin, globalConfig string) bool {
+	if _, err := os.Stat(foremanBin); os.IsNotExist(err) {
+		return false
+	}
+	if _, err := os.Stat(globalConfig); os.IsNotExist(err) {
+		return false
+	}
+	// Check systemd unit exists
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	unitFile := filepath.Join(home, ".config", "systemd", "user", "foreman.service")
+	if _, err := os.Stat(unitFile); os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
+// sanitizeServiceID converts a folder name into a valid YAML key / service ID.
+func sanitizeServiceID(name string) string {
+	// Replace non-alphanumeric chars (except hyphens) with hyphens
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('-')
+		}
+	}
+	id := strings.Trim(b.String(), "-")
+	if id == "" {
+		id = "project"
+	}
+	return id
+}
+
+// upsertService adds or updates a service entry in the global config YAML node tree.
+func upsertService(doc *yaml.Node, id, foremanBin, configPath, workingDir string) error {
+	if doc.Kind != yaml.DocumentNode || len(doc.Content) == 0 {
+		return fmt.Errorf("invalid YAML document")
+	}
+	root := doc.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return fmt.Errorf("expected mapping at root")
+	}
+
+	// Find or create the "services" key
+	var servicesValue *yaml.Node
+	for i := 0; i < len(root.Content)-1; i += 2 {
+		if root.Content[i].Value == "services" {
+			servicesValue = root.Content[i+1]
+			break
+		}
+	}
+
+	if servicesValue == nil {
+		// Add a "services" key
+		root.Content = append(root.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "services"},
+			&yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"},
+		)
+		servicesValue = root.Content[len(root.Content)-1]
+	}
+
+	// If services was an empty scalar (e.g., `services: {}`), convert to mapping
+	if servicesValue.Kind == yaml.ScalarNode || (servicesValue.Kind == yaml.MappingNode && servicesValue.Tag == "!!map" && len(servicesValue.Content) == 0) {
+		servicesValue.Kind = yaml.MappingNode
+		servicesValue.Tag = "!!map"
+		servicesValue.Content = nil
+	}
+
+	// Check if this service ID already exists and update it
+	for i := 0; i < len(servicesValue.Content)-1; i += 2 {
+		if servicesValue.Content[i].Value == id {
+			// Update the existing entry
+			servicesValue.Content[i+1] = buildServiceNode(foremanBin, configPath, workingDir)
+			return nil
+		}
+	}
+
+	// Add new service entry
+	servicesValue.Content = append(servicesValue.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Value: id},
+		buildServiceNode(foremanBin, configPath, workingDir),
+	)
+	return nil
+}
+
+// buildServiceNode creates a YAML mapping node for the foreman service entry.
+func buildServiceNode(foremanBin, configPath, workingDir string) *yaml.Node {
+	return &yaml.Node{
+		Kind: yaml.MappingNode,
+		Tag:  "!!map",
+		Content: []*yaml.Node{
+			{Kind: yaml.ScalarNode, Value: "command"},
+			{Kind: yaml.ScalarNode, Value: foremanBin},
+			{Kind: yaml.ScalarNode, Value: "args"},
+			{Kind: yaml.SequenceNode, Tag: "!!seq", Content: []*yaml.Node{
+				{Kind: yaml.ScalarNode, Value: "-c"},
+				{Kind: yaml.ScalarNode, Value: configPath},
+			}},
+			{Kind: yaml.ScalarNode, Value: "working_dir"},
+			{Kind: yaml.ScalarNode, Value: workingDir},
+			{Kind: yaml.ScalarNode, Value: "auto_start"},
+			{Kind: yaml.ScalarNode, Value: "true", Tag: "!!bool"},
+		},
+	}
 }
 
 func copyFile(src, dst string, perm os.FileMode) error {
