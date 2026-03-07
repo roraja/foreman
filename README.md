@@ -4,7 +4,7 @@ A single-binary, cross-platform local services monitor and manager. Start, stop,
 
 ## Install
 
-**One-liner** (downloads to `~/.local/bin`):
+**Linux / macOS** (downloads to `~/.local/bin`):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/roraja/foreman/master/install.sh | sh
@@ -14,6 +14,18 @@ Or specify a version or install directory:
 
 ```bash
 FOREMAN_VERSION=v0.0.3 INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/roraja/foreman/master/install.sh | sh
+```
+
+**Windows** (PowerShell — downloads to `~/.foreman/bin` and adds to PATH):
+
+```powershell
+irm https://raw.githubusercontent.com/roraja/foreman/master/install.ps1 | iex
+```
+
+Or specify a version or install directory:
+
+```powershell
+$env:FOREMAN_VERSION="v0.0.3"; $env:INSTALL_DIR="C:\tools"; irm https://raw.githubusercontent.com/roraja/foreman/master/install.ps1 | iex
 ```
 
 **From source:**
