@@ -7,13 +7,13 @@ A single-binary, cross-platform local services monitor and manager. Start, stop,
 **One-liner** (downloads to `~/.local/bin`):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/roraja/foreman/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/roraja/foreman/master/install.sh | sh
 ```
 
 Or specify a version or install directory:
 
 ```bash
-FOREMAN_VERSION=v0.0.3 INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/roraja/foreman/main/install.sh | sh
+FOREMAN_VERSION=v0.0.3 INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/roraja/foreman/master/install.sh | sh
 ```
 
 **From source:**
