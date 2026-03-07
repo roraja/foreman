@@ -30,6 +30,9 @@ fi
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+case "$OS" in
+    darwin) OS="macos" ;;
+esac
 ARCH="$(uname -m)"
 echo "==> Detected platform: ${OS}/${ARCH}"
 case "$ARCH" in
