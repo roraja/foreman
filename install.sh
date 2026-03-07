@@ -64,9 +64,9 @@ fi
 chmod +x "${INSTALL_DIR}/foreman"
 echo "==> Installed foreman to ${INSTALL_DIR}/foreman"
 
-# Verify the binary runs
-if "${INSTALL_DIR}/foreman" --version >/dev/null 2>&1; then
-    echo "    Verified: $(${INSTALL_DIR}/foreman --version 2>/dev/null || echo 'ok')"
+# Verify the binary is executable and valid
+if "${INSTALL_DIR}/foreman" -h >/dev/null 2>&1; then
+    echo "    Verified: binary is valid and executable"
 else
     echo "    Warning: could not verify the binary. It may not be compatible with this platform."
 fi

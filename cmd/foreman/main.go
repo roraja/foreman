@@ -8,11 +8,9 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -57,7 +55,7 @@ Usage:
   foreman [flags]                           Start the web dashboard
   foreman commands [flags]                  List configured commands
   foreman run <command-id> [flags] [-- extra-args]  Run a command
-  foreman install [flags]                   Install foreman as a user systemd service
+  foreman install [flags]                   Install foreman as a boot service
   foreman runOnBoot [flags]                 Register this project to start on boot
   foreman help                              Show this help
 
@@ -375,11 +373,6 @@ func cmdRun(args []string) {
 }
 
 func cmdInstall(args []string) {
-	if runtime.GOOS != "linux" {
-		fmt.Fprintln(os.Stderr, "Error: foreman install is only supported on Linux (requires systemd)")
-		os.Exit(1)
-	}
-
 	fs := flag.NewFlagSet("install", flag.ExitOnError)
 	port := fs.Int("port", 9090, "Port for the foreman service")
 	host := fs.String("host", "127.0.0.1", "Host for the foreman service")
@@ -394,16 +387,14 @@ func cmdInstall(args []string) {
 
 	foremanDir := filepath.Join(home, ".foreman")
 	foremanBin := filepath.Join(foremanDir, "foreman")
+	if runtime.GOOS == "windows" {
+		foremanBin += ".exe"
+	}
 	foremanConfig := filepath.Join(foremanDir, "foreman.yaml")
-	systemdDir := filepath.Join(home, ".config", "systemd", "user")
-	unitFile := filepath.Join(systemdDir, "foreman.service")
 
-	// Create directories
-	for _, dir := range []string{foremanDir, systemdDir} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating directory %s: %v\n", dir, err)
-			os.Exit(1)
-		}
+	if err := os.MkdirAll(foremanDir, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating directory %s: %v\n", foremanDir, err)
+		os.Exit(1)
 	}
 
 	// Copy current binary to ~/.foreman/foreman
@@ -424,88 +415,13 @@ func cmdInstall(args []string) {
 		os.Exit(1)
 	}
 
-	// Write foreman.yaml
-	fmt.Printf("Writing config to %s\n", foremanConfig)
-	configContent := "# Foreman global service configuration\n" +
-		"# Add services and commands here to manage them via the foreman dashboard.\n" +
-		"#\n" +
-		"# Documentation: foreman help\n" +
-		"\n" +
-		"project_root: " + foremanDir + "\n" +
-		"port: " + strconv.Itoa(*port) + "\n" +
-		"host: " + *host + "\n" +
-		"log_retention_lines: 10000\n" +
-		"logs_dir: " + filepath.Join(foremanDir, "logs") + "\n" +
-		"\n" +
-		"# Import additional config files:\n" +
-		"# imports:\n" +
-		"#   - services.yaml\n" +
-		"\n" +
-		"services: {}\n" +
-		"commands: {}\n"
-
-	if err := os.WriteFile(foremanConfig, []byte(configContent), 0o644); err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing config: %v\n", err)
+	if err := platformInstall(foremanBin, foremanConfig, foremanDir, *port, *host, *noStart); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-
-	// Write systemd unit file
-	fmt.Printf("Writing systemd unit to %s\n", unitFile)
-	unitContent := "[Unit]\n" +
-		"Description=Foreman — local services monitor and command runner\n" +
-		"After=network.target\n" +
-		"\n" +
-		"[Service]\n" +
-		"Type=simple\n" +
-		"ExecStart=" + foremanBin + " -c " + foremanConfig + "\n" +
-		"Restart=on-failure\n" +
-		"RestartSec=5\n" +
-		"WorkingDirectory=" + foremanDir + "\n" +
-		"\n" +
-		"[Install]\n" +
-		"WantedBy=default.target\n"
-
-	if err := os.WriteFile(unitFile, []byte(unitContent), 0o644); err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing systemd unit: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Reload systemd and enable the service
-	fmt.Println("Enabling foreman service...")
-	if out, err := exec.Command("systemctl", "--user", "daemon-reload").CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: systemctl daemon-reload failed: %v\n%s\n", err, out)
-	}
-	if out, err := exec.Command("systemctl", "--user", "enable", "foreman.service").CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: systemctl enable failed: %v\n%s\n", err, out)
-	}
-
-	if !*noStart {
-		fmt.Println("Starting foreman service...")
-		if out, err := exec.Command("systemctl", "--user", "start", "foreman.service").CombinedOutput(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: systemctl start failed: %v\n%s\n", err, out)
-		}
-	}
-
-	fmt.Println()
-	fmt.Println("✓ Foreman installed successfully!")
-	fmt.Printf("  Binary:  %s\n", foremanBin)
-	fmt.Printf("  Config:  %s\n", foremanConfig)
-	fmt.Printf("  Service: %s\n", unitFile)
-	fmt.Printf("  Dashboard: http://%s:%d\n", *host, *port)
-	fmt.Println()
-	fmt.Println("Useful commands:")
-	fmt.Println("  systemctl --user status foreman    Check service status")
-	fmt.Println("  systemctl --user restart foreman   Restart the service")
-	fmt.Println("  systemctl --user stop foreman      Stop the service")
-	fmt.Println("  journalctl --user -u foreman -f    Follow logs")
 }
 
 func cmdRunOnBoot(args []string) {
-	if runtime.GOOS != "linux" {
-		fmt.Fprintln(os.Stderr, "Error: foreman runOnBoot is only supported on Linux (requires systemd)")
-		os.Exit(1)
-	}
-
 	fs := flag.NewFlagSet("runOnBoot", flag.ExitOnError)
 	configPath := fs.String("c", "foreman.yaml", "Path to foreman.yaml config file")
 	fs.StringVar(configPath, "config", "foreman.yaml", "Path to foreman.yaml config file")
@@ -537,9 +453,12 @@ func cmdRunOnBoot(args []string) {
 
 	foremanDir := filepath.Join(home, ".foreman")
 	foremanBin := filepath.Join(foremanDir, "foreman")
+	if runtime.GOOS == "windows" {
+		foremanBin += ".exe"
+	}
 	globalConfig := filepath.Join(foremanDir, "foreman.yaml")
 
-	// Ensure foreman is installed as a systemd service
+	// Ensure foreman is installed as a boot service
 	if !isBootloaderInstalled(foremanBin, globalConfig) {
 		fmt.Println("Foreman bootloader not installed. Running install...")
 		cmdInstall([]string{})
@@ -587,10 +506,11 @@ func cmdRunOnBoot(args []string) {
 	fmt.Println()
 	fmt.Println("The global foreman will start this project's foreman on boot.")
 	fmt.Println("To apply immediately, restart the global foreman:")
-	fmt.Println("  systemctl --user restart foreman")
+	fmt.Println(platformRestartHint())
 }
 
-// isBootloaderInstalled checks if the foreman binary and global config exist.
+// isBootloaderInstalled checks if the foreman binary, global config, and
+// platform-specific boot mechanism are all in place.
 func isBootloaderInstalled(foremanBin, globalConfig string) bool {
 	if _, err := os.Stat(foremanBin); os.IsNotExist(err) {
 		return false
@@ -598,16 +518,7 @@ func isBootloaderInstalled(foremanBin, globalConfig string) bool {
 	if _, err := os.Stat(globalConfig); os.IsNotExist(err) {
 		return false
 	}
-	// Check systemd unit exists
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return false
-	}
-	unitFile := filepath.Join(home, ".config", "systemd", "user", "foreman.service")
-	if _, err := os.Stat(unitFile); os.IsNotExist(err) {
-		return false
-	}
-	return true
+	return isPlatformBootInstalled()
 }
 
 // sanitizeServiceID converts a folder name into a valid YAML key / service ID.
