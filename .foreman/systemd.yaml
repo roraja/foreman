@@ -1,0 +1,67 @@
+# Systemd service management commands
+# Imported by foreman.yaml
+# These assume foreman is installed as a systemd user service.
+
+commands:
+  svc-status:
+    label: "Service Status"
+    description: "Check foreman systemd service status"
+    group: systemd
+    tags: [systemd, status]
+    run: "systemctl --user status foreman"
+    ignore_errors: true
+
+  svc-restart:
+    label: "Restart Service"
+    description: "Restart the foreman systemd service"
+    group: systemd
+    tags: [systemd, restart]
+    run: "systemctl --user restart foreman"
+
+  svc-stop:
+    label: "Stop Service"
+    description: "Stop the foreman systemd service"
+    group: systemd
+    tags: [systemd, stop]
+    run: "systemctl --user stop foreman"
+    confirm: true
+
+  svc-logs:
+    label: "Follow Logs"
+    description: "Follow foreman systemd journal logs in real time"
+    group: systemd
+    tags: [systemd, logs]
+    run: "journalctl --user -u foreman -f"
+    interactive: true
+
+  svc-install:
+    label: "Install Service"
+    description: "Install foreman as a systemd user service and enable it"
+    group: systemd
+    tags: [systemd, install, setup]
+    depends_on: [install-local]
+    confirm: true
+    run: |
+      mkdir -p "$HOME/.config/systemd/user"
+      FOREMAN_BIN="$HOME/.local/bin/foreman"
+      FOREMAN_CONFIG="$(pwd)/foreman.yaml"
+      cat > "$HOME/.config/systemd/user/foreman.service" <<EOF
+      [Unit]
+      Description=Foreman — local services monitor
+      After=default.target
+
+      [Service]
+      Type=simple
+      ExecStart=$FOREMAN_BIN -c $FOREMAN_CONFIG
+      Restart=on-failure
+      RestartSec=5
+
+      [Install]
+      WantedBy=default.target
+      EOF
+      sed -i 's/^      //' "$HOME/.config/systemd/user/foreman.service"
+      systemctl --user daemon-reload
+      systemctl --user enable foreman
+      systemctl --user start foreman
+      echo "Installed and started foreman.service"
+      systemctl --user status foreman --no-pager

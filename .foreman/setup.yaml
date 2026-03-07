@@ -1,0 +1,18 @@
+# Setup/install commands
+# Imported by foreman.yaml
+
+commands:
+  install-local:
+    label: "Install Local"
+    description: "Build and install foreman to ~/.local/bin"
+    group: setup
+    tags: [install, setup]
+    run: |
+      CGO_ENABLED=0 go build -ldflags='-s -w' -o bin/foreman ./cmd/foreman
+      mkdir -p "$HOME/.local/bin"
+      cp bin/foreman "$HOME/.local/bin/foreman"
+      echo "Installed: $HOME/.local/bin/foreman"
+      ls -lh "$HOME/.local/bin/foreman"
+    env:
+      GO111MODULE: "on"
+    depends_on: [test-quick]

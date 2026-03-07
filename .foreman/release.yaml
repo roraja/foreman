@@ -1,0 +1,30 @@
+# Release commands — version tagging
+# Imported by foreman.yaml
+# Note: Release.Tag is interactive and requires user input,
+# so it is marked with interactive: true and confirm: true.
+
+commands:
+  release-tag:
+    label: "Release Tag"
+    description: "Increment version tag and push to trigger GitHub release"
+    group: release
+    tags: [release, git]
+    confirm: true
+    interactive: true
+    run: |
+      if ! git diff --quiet || ! git diff --cached --quiet; then
+        echo "Error: working tree has uncommitted changes. Commit or stash first."
+        exit 1
+      fi
+      latest=$(git tag --sort=-v:refname --list 'v*' | head -n1)
+      if [ -z "$latest" ]; then latest="v0.0.0"; fi
+      echo "Current version: $latest"
+      version="${latest#v}"
+      IFS='.' read -r major minor patch <<< "$version"
+      major="${major:-0}"; minor="${minor:-0}"; patch="${patch:-0}"
+      patch=$((patch+1))
+      new_tag="v${major}.${minor}.${patch}"
+      echo "New version: $new_tag (patch bump)"
+      git tag -a "$new_tag" -m "Release $new_tag"
+      git push origin "$new_tag"
+      echo "Pushed tag $new_tag — GitHub Actions will create the release."

@@ -13,22 +13,22 @@ import (
 
 // Config is the root configuration for Foreman.
 type Config struct {
-	ProjectRoot       string                     `yaml:"project_root"`
-	EnvFile           string                     `yaml:"env_file"`
-	Password          string                     `yaml:"password"`
-	Port              int                        `yaml:"port"`
-	Host              string                     `yaml:"host"`
-	AutoStartOnLogin  bool                       `yaml:"auto_start_on_login"`
-	LogRetentionLines int                        `yaml:"log_retention_lines"`
-	LogFile           string                     `yaml:"log_file"`
-	LogsDir           string                     `yaml:"logs_dir"`
-	EnableServiceLogs *bool                      `yaml:"enable_service_logs"`
-	EnableCommandLogs *bool                      `yaml:"enable_command_logs"`
-	EnableDaemonLog   *bool                      `yaml:"enable_daemon_log"`
-	APIToken          string                     `yaml:"api_token"`
-	Imports           []string                   `yaml:"imports"`
-	Commands          map[string]*CommandConfig  `yaml:"commands"`
-	Services          map[string]*ServiceConfig  `yaml:"services"`
+	ProjectRoot       string                    `yaml:"project_root"`
+	EnvFile           string                    `yaml:"env_file"`
+	Password          string                    `yaml:"password"`
+	Port              int                       `yaml:"port"`
+	Host              string                    `yaml:"host"`
+	AutoStartOnLogin  bool                      `yaml:"auto_start_on_login"`
+	LogRetentionLines int                       `yaml:"log_retention_lines"`
+	LogFile           string                    `yaml:"log_file"`
+	LogsDir           string                    `yaml:"logs_dir"`
+	EnableServiceLogs *bool                     `yaml:"enable_service_logs"`
+	EnableCommandLogs *bool                     `yaml:"enable_command_logs"`
+	EnableDaemonLog   *bool                     `yaml:"enable_daemon_log"`
+	APIToken          string                    `yaml:"api_token"`
+	Imports           []string                  `yaml:"imports"`
+	Commands          map[string]*CommandConfig `yaml:"commands"`
+	Services          map[string]*ServiceConfig `yaml:"services"`
 }
 
 // ServiceLogsEnabled returns whether service file logging is enabled (default: true).

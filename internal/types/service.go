@@ -22,8 +22,8 @@ const (
 type ServiceType string
 
 const (
-	TypeProcess        ServiceType = "process"
-	TypeDockerCompose  ServiceType = "docker-compose"
+	TypeProcess       ServiceType = "process"
+	TypeDockerCompose ServiceType = "docker-compose"
 )
 
 // LogEntry represents a single log line from a service.
@@ -35,19 +35,19 @@ type LogEntry struct {
 
 // ServiceInfo is the API-facing representation of a service.
 type ServiceInfo struct {
-	ID         string        `json:"id"`
-	Label      string        `json:"label"`
-	Group      string        `json:"group,omitempty"`
-	Type       ServiceType   `json:"type"`
-	Status     ServiceStatus `json:"status"`
-	PID        int           `json:"pid,omitempty"`
-	Uptime     string        `json:"uptime,omitempty"`
-	Restarts   int           `json:"restarts"`
-	ExitCode   *int          `json:"exit_code,omitempty"`
-	AutoStart  bool          `json:"auto_start"`
-	HasBuild   bool          `json:"has_build"`
-	URL        string        `json:"url,omitempty"`
-	Children   []ServiceInfo `json:"children,omitempty"`
+	ID        string        `json:"id"`
+	Label     string        `json:"label"`
+	Group     string        `json:"group,omitempty"`
+	Type      ServiceType   `json:"type"`
+	Status    ServiceStatus `json:"status"`
+	PID       int           `json:"pid,omitempty"`
+	Uptime    string        `json:"uptime,omitempty"`
+	Restarts  int           `json:"restarts"`
+	ExitCode  *int          `json:"exit_code,omitempty"`
+	AutoStart bool          `json:"auto_start"`
+	HasBuild  bool          `json:"has_build"`
+	URL       string        `json:"url,omitempty"`
+	Children  []ServiceInfo `json:"children,omitempty"`
 }
 
 // LogBuffer is a thread-safe ring buffer for log entries.

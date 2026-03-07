@@ -1,0 +1,46 @@
+# Foreman — project configuration
+# Manages build, test, lint, install, and release commands for the foreman project itself.
+#
+#   foreman commands                     List all commands
+#   foreman run build-debug              Build the binary
+#   foreman run test-all                 Run all tests
+#   foreman run lint fmt --parallel      Lint and format in parallel
+#   foreman run ci                       Full CI pipeline
+#   foreman -c foreman.yaml              Start the web dashboard
+
+project_root: .
+password: admin
+port: 9875
+host: 0.0.0.0
+log_retention_lines: 5000
+logs_dir: .foreman/logs
+
+imports:
+  - .foreman/build.yaml
+  - .foreman/test.yaml
+  - .foreman/dev.yaml
+  - .foreman/setup.yaml
+  - .foreman/release.yaml
+  - .foreman/systemd.yaml
+
+commands:
+  ci:
+    label: "CI Pipeline"
+    description: "Full CI: lint, test, build — the same checks that run in GitHub Actions"
+    group: ci
+    tags: [ci, all]
+    run: "echo 'CI pipeline passed'"
+    depends_on: [lint, test-all, build-release]
+
+services:
+  foreman-dev:
+    label: "Foreman Dev Server"
+    group: dev
+    command: go
+    args: ["run", "./cmd/foreman", "-c", "example-repo/foreman.yaml"]
+    auto_start: false
+    url: "http://localhost:7044"
+    env:
+      GO111MODULE: "on"
+    build:
+      uses: build-debug

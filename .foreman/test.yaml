@@ -1,0 +1,48 @@
+# Test commands — run test suites
+# Imported by foreman.yaml
+
+commands:
+  test-all:
+    label: "Test All"
+    description: "Run all Go tests with verbose output"
+    group: test
+    tags: [test, ci]
+    run: "go test ./... -v"
+    env:
+      GO111MODULE: "on"
+
+  test-quick:
+    label: "Test (quick)"
+    description: "Run all Go tests without verbose output"
+    group: test
+    tags: [test]
+    run: "go test ./... -count=1"
+    env:
+      GO111MODULE: "on"
+
+  test-config:
+    label: "Test Config"
+    description: "Run config package tests only"
+    group: test
+    tags: [test, config]
+    run: "go test ./internal/config/ -v -count=1"
+    env:
+      GO111MODULE: "on"
+
+  test-command:
+    label: "Test Commands"
+    description: "Run command runner tests only"
+    group: test
+    tags: [test, command]
+    run: "go test ./internal/command/ -v -count=1"
+    env:
+      GO111MODULE: "on"
+
+  test-logging:
+    label: "Test Logging"
+    description: "Run file logger tests only"
+    group: test
+    tags: [test, logging]
+    run: "go test ./internal/logging/ -v -count=1"
+    env:
+      GO111MODULE: "on"

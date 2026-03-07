@@ -1,0 +1,37 @@
+# Build commands — compile foreman binaries
+# Imported by foreman.yaml
+
+commands:
+  build-debug:
+    label: "Build (debug)"
+    description: "Build foreman binary with debug symbols"
+    group: build
+    tags: [build, debug]
+    run: "go build -o bin/foreman ./cmd/foreman"
+    env:
+      GO111MODULE: "on"
+
+  build-release:
+    label: "Build (release)"
+    description: "Build foreman binary stripped for production"
+    group: build
+    tags: [build, release]
+    run: "CGO_ENABLED=0 go build -ldflags='-s -w' -o bin/foreman ./cmd/foreman"
+    env:
+      GO111MODULE: "on"
+
+  build-cross:
+    label: "Build (cross-platform)"
+    description: "Build for linux, darwin, windows — amd64 and arm64"
+    group: build
+    tags: [build, cross, release]
+    run: |
+      for PLATFORM in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+        OS="${PLATFORM%/*}"; ARCH="${PLATFORM#*/}"; EXT=""; [ "$OS" = "windows" ] && EXT=".exe"
+        echo "Building: $OS/$ARCH"
+        GOOS=$OS GOARCH=$ARCH CGO_ENABLED=0 go build -ldflags='-s -w' -o "bin/foreman-${OS}-${ARCH}${EXT}" ./cmd/foreman
+      done
+      echo "All platforms built"
+      ls -lh bin/
+    env:
+      GO111MODULE: "on"

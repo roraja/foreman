@@ -1,0 +1,115 @@
+# Foreman Example Configuration
+# Demonstrates commands, services, imports, and composability
+#
+# Uses mock binaries in ./mock-bin/ that simulate real tools.
+# Run: foreman commands -c example-repo/foreman.yaml
+# Run: foreman run install -c example-repo/foreman.yaml
+
+project_root: .
+password: admin
+port: 7044
+host: 0.0.0.0
+log_retention_lines: 5000
+env_file: .env
+
+# Import command definitions from other YAML files
+imports:
+  - db-commands.yaml
+  - quality-commands.yaml
+
+commands:
+  install:
+    label: "Install Dependencies"
+    description: "Install all project dependencies"
+    group: setup
+    tags: [deps, install]
+    run: "./mock-bin/npm install"
+    timeout: "2m"
+
+  build-api:
+    label: "Build API"
+    description: "Compile the Go API server"
+    group: build
+    tags: [build, go, api]
+    run: "../mock-bin/go build -o ./bin/api ./cmd/api"
+    working_dir: ./backend
+    platform:
+      windows:
+        run: "../mock-bin/go build -o .\\bin\\api.exe .\\cmd\\api"
+
+  build-frontend:
+    label: "Build Frontend"
+    description: "Build the React frontend"
+    group: build
+    tags: [build, frontend, react]
+    run: "../mock-bin/npm run build"
+    working_dir: ./frontend
+    depends_on: [install]
+
+  build-all:
+    label: "Build Everything"
+    description: "Build API and frontend in parallel"
+    group: build
+    tags: [build, all]
+    run: "echo 'All builds complete'"
+    parallel: [build-api, build-frontend]
+
+  run-api:
+    label: "Run API (dev)"
+    description: "Start the API server in development mode"
+    group: dev
+    command: ../mock-bin/go
+    args: ["run", "./cmd/api"]
+    working_dir: ./backend
+    env:
+      GIN_MODE: debug
+
+  run-frontend:
+    label: "Run Frontend (dev)"
+    description: "Start the frontend dev server"
+    group: dev
+    run: "../mock-bin/npm run dev"
+    working_dir: ./frontend
+
+  format:
+    label: "Format Code"
+    description: "Format all source files"
+    group: quality
+    tags: [format]
+    platform:
+      linux:
+        run: "./mock-bin/gofmt -w . && ./mock-bin/npx prettier --write ."
+      darwin:
+        run: "./mock-bin/gofmt -w . && ./mock-bin/npx prettier --write ."
+      windows:
+        run: "./mock-bin/gofmt -w . && ./mock-bin/npx prettier --write ."
+
+services:
+  api:
+    label: "API Server"
+    group: backend
+    uses: run-api
+    auto_start: false
+    url: "http://localhost:8080"
+    env:
+      PORT: "8080"
+    build:
+      uses: build-api
+
+  frontend:
+    label: "Frontend Dev Server"
+    group: frontend
+    uses: run-frontend
+    auto_start: true
+    url: "http://localhost:3000"
+    build:
+      uses: build-frontend
+
+  echo-test:
+    label: "Echo Test Service"
+    group: test
+    command: bash
+    args: ["-c", "while true; do echo \"$(date): hello from echo-test\"; sleep 2; done"]
+    url: "http://localhost:3000"
+    auto_start: false
+

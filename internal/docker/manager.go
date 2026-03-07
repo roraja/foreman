@@ -36,17 +36,17 @@ type ComposeManager struct {
 	Config      *config.ServiceConfig
 	ComposeFile string
 
-	mu        sync.RWMutex
-	services  []ComposeService
-	logs      map[string]*types.LogBuffer
-	subMu     sync.RWMutex
+	mu          sync.RWMutex
+	services    []ComposeService
+	logs        map[string]*types.LogBuffer
+	subMu       sync.RWMutex
 	subscribers map[string]map[chan types.LogEntry]struct{}
-	cancelLogs map[string]context.CancelFunc
+	cancelLogs  map[string]context.CancelFunc
 
 	// opsLogs captures output from docker compose commands (up, stop, restart, etc.)
 	// These are viewable when expanding the parent compose group in the UI.
-	opsLogs       *types.LogBuffer
-	opsSubMu      sync.RWMutex
+	opsLogs        *types.LogBuffer
+	opsSubMu       sync.RWMutex
 	opsSubscribers map[chan types.LogEntry]struct{}
 
 	// cancelAllLogs cancels the combined "docker compose logs -f" stream

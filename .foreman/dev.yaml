@@ -1,0 +1,27 @@
+# Dev commands — linting, formatting, cleanup
+# Imported by foreman.yaml
+
+commands:
+  lint:
+    label: "Lint"
+    description: "Run go vet on all packages"
+    group: dev
+    tags: [lint, ci]
+    run: "go vet ./..."
+    env:
+      GO111MODULE: "on"
+
+  fmt:
+    label: "Format"
+    description: "Format all Go source files with gofmt"
+    group: dev
+    tags: [format]
+    run: "gofmt -w ."
+
+  clean:
+    label: "Clean"
+    description: "Remove build artifacts from bin/"
+    group: dev
+    tags: [clean]
+    run: "rm -rf bin/ && echo 'Cleaned'"
+    confirm: true

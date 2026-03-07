@@ -1,4 +1,3 @@
 bin/
-foreman.yaml
 **/*.log
 *.log
