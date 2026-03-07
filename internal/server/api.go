@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/anthropic/foreman/internal/orchestrator"
@@ -51,9 +52,17 @@ func (s *Server) setupRoutes() {
 	// Service-specific routes (uses path parsing)
 	s.mux.HandleFunc("/api/service/", s.requireAuth(s.handleServiceAction))
 
+	// Command routes
+	s.mux.HandleFunc("/api/commands", s.requireAuth(s.handleListCommands))
+	s.mux.HandleFunc("/api/command/", s.requireAuth(s.handleCommandAction))
+
+	// Log history routes
+	s.mux.HandleFunc("/api/logs/", s.requireAuth(s.handleLogHistory))
+
 	// WebSocket routes
 	s.mux.HandleFunc("/ws/logs/", s.requireAuth(s.handleWSLogs))
 	s.mux.HandleFunc("/ws/stdin/", s.requireAuth(s.handleWSStdin))
+	s.mux.HandleFunc("/ws/command/", s.requireAuth(s.handleWSCommandLogs))
 
 	// Frontend static files
 	s.mux.HandleFunc("/", s.handleFrontend)
@@ -124,9 +133,9 @@ func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	log.Printf("API: listing services (remote: %s)", r.RemoteAddr)
+	// log.Printf("API: listing services (remote: %s)", r.RemoteAddr)
 	services := s.orch.ListServices()
-	log.Printf("API: returning %d services", len(services))
+	// log.Printf("API: returning %d services", len(services))
 	jsonResponse(w, http.StatusOK, services)
 }
 
@@ -323,4 +332,155 @@ func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 func isAPIRequest(r *http.Request) bool {
 	return len(r.URL.Path) >= 4 && r.URL.Path[:4] == "/api" ||
 		len(r.URL.Path) >= 3 && r.URL.Path[:3] == "/ws"
+}
+
+func (s *Server) handleListCommands(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	query := r.URL.Query().Get("q")
+	group := r.URL.Query().Get("group")
+	tag := r.URL.Query().Get("tag")
+	commands := s.orch.ListCommands(query, group, tag)
+	jsonResponse(w, http.StatusOK, commands)
+}
+
+func (s *Server) handleCommandAction(w http.ResponseWriter, r *http.Request) {
+	// Parse: /api/command/{id}/{action}
+	path := r.URL.Path[len("/api/command/"):]
+	var commandID, action string
+
+	for i := len(path) - 1; i >= 0; i-- {
+		if path[i] == '/' {
+			commandID = path[:i]
+			action = path[i+1:]
+			break
+		}
+	}
+
+	if commandID == "" || action == "" {
+		http.Error(w, "invalid path: expected /api/command/{id}/{action}", http.StatusBadRequest)
+		return
+	}
+
+	switch action {
+	case "run":
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Env  map[string]string `json:"env"`
+			Args []string          `json:"args"`
+		}
+		if r.Body != nil {
+			_ = json.NewDecoder(r.Body).Decode(&req)
+		}
+		log.Printf("API: run command %s requested", commandID)
+		go func() {
+			if err := s.orch.RunCommand(commandID, req.Env, req.Args); err != nil {
+				log.Printf("API: command %s failed: %v", commandID, err)
+			} else {
+				log.Printf("API: command %s completed", commandID)
+			}
+		}()
+		jsonResponse(w, http.StatusAccepted, map[string]string{"status": "running"})
+
+	case "status":
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		info, err := s.orch.GetCommandStatus(commandID)
+		if err != nil {
+			jsonResponse(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			return
+		}
+		jsonResponse(w, http.StatusOK, info)
+
+	case "logs":
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		n := 100
+		if lines := r.URL.Query().Get("lines"); lines != "" {
+			if parsed, err := strconv.Atoi(lines); err == nil {
+				n = parsed
+			}
+		}
+		logs, err := s.orch.GetCommandLogs(commandID, n)
+		if err != nil {
+			jsonResponse(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			return
+		}
+		jsonResponse(w, http.StatusOK, logs)
+
+	case "cancel":
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if err := s.orch.CancelCommand(commandID); err != nil {
+			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]string{"status": "canceled"})
+
+	default:
+		http.Error(w, fmt.Sprintf("unknown action: %s", action), http.StatusBadRequest)
+	}
+}
+
+func (s *Server) handleLogHistory(w http.ResponseWriter, r *http.Request) {
+	// /api/logs/{name} — list runs for a service or command
+	// /api/logs/{name}/read?file=...&lines=... — read a specific log file
+	path := strings.TrimPrefix(r.URL.Path, "/api/logs/")
+	if path == "" {
+		http.Error(w, "name required", http.StatusBadRequest)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Check for /read suffix
+	var name, action string
+	if idx := strings.LastIndex(path, "/"); idx >= 0 {
+		name = path[:idx]
+		action = path[idx+1:]
+	} else {
+		name = path
+	}
+
+	if action == "read" {
+		filePath := r.URL.Query().Get("file")
+		if filePath == "" {
+			http.Error(w, "file query parameter required", http.StatusBadRequest)
+			return
+		}
+		n := 500
+		if lines := r.URL.Query().Get("lines"); lines != "" {
+			if parsed, err := strconv.Atoi(lines); err == nil {
+				n = parsed
+			}
+		}
+		content, err := s.orch.ReadLogFile(filePath, n)
+		if err != nil {
+			jsonResponse(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"lines": content, "file": filePath})
+		return
+	}
+
+	runs, err := s.orch.ListLogRuns(name)
+	if err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	jsonResponse(w, http.StatusOK, runs)
 }

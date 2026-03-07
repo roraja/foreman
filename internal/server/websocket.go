@@ -75,3 +75,38 @@ func (s *Server) handleWSStdin(w http.ResponseWriter, r *http.Request) {
 
 	handler.ServeHTTP(w, r)
 }
+
+func (s *Server) handleWSCommandLogs(w http.ResponseWriter, r *http.Request) {
+	commandID := strings.TrimPrefix(r.URL.Path, "/ws/command/")
+	if commandID == "" {
+		http.Error(w, "command ID required", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("ws: command logs connection opened for %s (remote: %s)", commandID, r.RemoteAddr)
+
+	handler := websocket.Handler(func(ws *websocket.Conn) {
+		defer ws.Close()
+
+		ch, err := s.orch.SubscribeCommandLogs(commandID)
+		if err != nil {
+			log.Printf("ws: command logs subscribe error for %s: %v", commandID, err)
+			return
+		}
+		defer s.orch.UnsubscribeCommandLogs(commandID, ch)
+
+		for entry := range ch {
+			msg := map[string]string{
+				"timestamp": entry.Timestamp.Format("15:04:05"),
+				"stream":    entry.Stream,
+				"line":      entry.Line,
+			}
+			if err := websocket.JSON.Send(ws, msg); err != nil {
+				log.Printf("ws: command logs send error for %s: %v (closing)", commandID, err)
+				return
+			}
+		}
+	})
+
+	handler.ServeHTTP(w, r)
+}

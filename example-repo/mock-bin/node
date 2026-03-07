@@ -1,0 +1,12 @@
+#!/bin/bash
+# Mock node - simulates node.js runtime
+echo "[mock-node] Running: node $*"
+echo "[mock-node] Node.js v20.11.0"
+
+if [ -n "$1" ]; then
+  echo "[mock-node] Executing: $1"
+  sleep 0.1
+  echo "[mock-node] Execution completed"
+fi
+
+exit 0

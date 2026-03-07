@@ -1,0 +1,6 @@
+#!/bin/bash
+# Mock gofmt - simulates Go formatter
+echo "[mock-gofmt] Formatting Go files..."
+sleep 0.1
+echo "[mock-gofmt] Formatted 12 files"
+exit 0

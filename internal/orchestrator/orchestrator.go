@@ -1,24 +1,29 @@
 package orchestrator
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 	"sync"
 
+	"github.com/anthropic/foreman/internal/command"
 	"github.com/anthropic/foreman/internal/config"
 	"github.com/anthropic/foreman/internal/docker"
+	"github.com/anthropic/foreman/internal/logging"
 	"github.com/anthropic/foreman/internal/process"
 	"github.com/anthropic/foreman/internal/types"
 )
 
 // Orchestrator coordinates all services (native processes + docker-compose).
 type Orchestrator struct {
-	mu             sync.RWMutex
-	cfg            *config.Config
-	configPath     string
-	processes      map[string]*process.Process
+	mu              sync.RWMutex
+	cfg             *config.Config
+	configPath      string
+	processes       map[string]*process.Process
 	composeManagers map[string]*docker.ComposeManager
+	commands        map[string]*command.Runner
 }
 
 // New creates an orchestrator from the given config.
@@ -28,13 +33,16 @@ func New(cfg *config.Config, configPath string) *Orchestrator {
 		configPath:      configPath,
 		processes:       make(map[string]*process.Process),
 		composeManagers: make(map[string]*docker.ComposeManager),
+		commands:        make(map[string]*command.Runner),
 	}
 	o.initServices()
+	o.initCommands()
 	return o
 }
 
 func (o *Orchestrator) initServices() {
 	log.Printf("initializing services from config (%d services configured)", len(o.cfg.Services))
+	logsDir := o.cfg.ResolvedLogsDir()
 	for id, svc := range o.cfg.Services {
 		if svc.Type == "docker-compose" {
 			log.Printf("  creating compose manager: %s (compose_file: %s)", id, svc.ComposeFile)
@@ -45,7 +53,11 @@ func (o *Orchestrator) initServices() {
 			o.composeManagers[id] = cm
 		} else {
 			log.Printf("  creating process: %s (command: %s)", id, svc.Command)
-			o.processes[id] = process.NewProcess(id, svc, o.cfg.LogRetentionLines)
+			p := process.NewProcess(id, svc, o.cfg.LogRetentionLines)
+			if o.cfg.ServiceLogsEnabled() {
+				p.SetFileLogger(logging.NewFileLogger(logsDir, id))
+			}
+			o.processes[id] = p
 		}
 	}
 	log.Printf("initialized %d processes and %d compose managers", len(o.processes), len(o.composeManagers))
@@ -381,6 +393,19 @@ func (o *Orchestrator) ReloadConfig() (added []string, removed []string, err err
 
 	o.cfg = newCfg
 
+	// Reinitialize commands
+	o.commands = make(map[string]*command.Runner)
+	if newCfg.Commands != nil {
+		logsDir := newCfg.ResolvedLogsDir()
+		for id, cmd := range newCfg.Commands {
+			runner := command.NewRunner(id, cmd, newCfg.LogRetentionLines)
+			if newCfg.CommandLogsEnabled() {
+				runner.SetFileLogger(logging.NewFileLogger(logsDir, id))
+			}
+			o.commands[id] = runner
+		}
+	}
+
 	log.Printf("config reloaded: %d added, %d removed", len(added), len(removed))
 	if len(added) > 0 {
 		log.Printf("  added services: %v", added)
@@ -397,6 +422,165 @@ func (o *Orchestrator) Config() *config.Config {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 	return o.cfg
+}
+
+func (o *Orchestrator) initCommands() {
+	if o.cfg.Commands == nil {
+		return
+	}
+	logsDir := o.cfg.ResolvedLogsDir()
+	log.Printf("initializing commands from config (%d commands configured)", len(o.cfg.Commands))
+	for id, cmd := range o.cfg.Commands {
+		log.Printf("  creating command runner: %s (label: %s)", id, cmd.Label)
+		runner := command.NewRunner(id, cmd, o.cfg.LogRetentionLines)
+		if o.cfg.CommandLogsEnabled() {
+			runner.SetFileLogger(logging.NewFileLogger(logsDir, id))
+		}
+		o.commands[id] = runner
+	}
+}
+
+// ListCommands returns info for all commands.
+func (o *Orchestrator) ListCommands(query, group, tag string) []types.CommandInfo {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+
+	var result []types.CommandInfo
+	for _, runner := range o.commands {
+		info := runner.Info()
+
+		// Filter by group
+		if group != "" && info.Group != group {
+			continue
+		}
+
+		// Filter by tag
+		if tag != "" {
+			found := false
+			for _, t := range info.Tags {
+				if t == tag {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+
+		// Filter by search query (matches id, label, description, tags)
+		if query != "" {
+			q := strings.ToLower(query)
+			matched := strings.Contains(strings.ToLower(info.ID), q) ||
+				strings.Contains(strings.ToLower(info.Label), q) ||
+				strings.Contains(strings.ToLower(info.Description), q)
+			if !matched {
+				for _, t := range info.Tags {
+					if strings.Contains(strings.ToLower(t), q) {
+						matched = true
+						break
+					}
+				}
+			}
+			if !matched {
+				continue
+			}
+		}
+
+		result = append(result, info)
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Group != result[j].Group {
+			return result[i].Group < result[j].Group
+		}
+		return result[i].ID < result[j].ID
+	})
+	return result
+}
+
+// RunCommand runs a command by ID.
+func (o *Orchestrator) RunCommand(id string, env map[string]string, args []string) error {
+	o.mu.RLock()
+	runner, ok := o.commands[id]
+	commands := o.commands
+	o.mu.RUnlock()
+
+	if !ok {
+		return fmt.Errorf("command %s not found", id)
+	}
+
+	return runner.Run(context.Background(), commands, env, args)
+}
+
+// CancelCommand cancels a running command.
+func (o *Orchestrator) CancelCommand(id string) error {
+	o.mu.RLock()
+	runner, ok := o.commands[id]
+	o.mu.RUnlock()
+
+	if !ok {
+		return fmt.Errorf("command %s not found", id)
+	}
+	return runner.Cancel()
+}
+
+// GetCommandStatus returns the status of a command.
+func (o *Orchestrator) GetCommandStatus(id string) (types.CommandInfo, error) {
+	o.mu.RLock()
+	runner, ok := o.commands[id]
+	o.mu.RUnlock()
+
+	if !ok {
+		return types.CommandInfo{}, fmt.Errorf("command %s not found", id)
+	}
+	return runner.Info(), nil
+}
+
+// GetCommandLogs returns recent logs for a command.
+func (o *Orchestrator) GetCommandLogs(id string, n int) ([]types.LogEntry, error) {
+	o.mu.RLock()
+	runner, ok := o.commands[id]
+	o.mu.RUnlock()
+
+	if !ok {
+		return nil, fmt.Errorf("command %s not found", id)
+	}
+	return runner.Logs(n), nil
+}
+
+// SubscribeCommandLogs subscribes to real-time log entries for a command.
+func (o *Orchestrator) SubscribeCommandLogs(id string) (chan types.LogEntry, error) {
+	o.mu.RLock()
+	runner, ok := o.commands[id]
+	o.mu.RUnlock()
+
+	if !ok {
+		return nil, fmt.Errorf("command %s not found", id)
+	}
+	return runner.Subscribe(), nil
+}
+
+// UnsubscribeCommandLogs unsubscribes from command log entries.
+func (o *Orchestrator) UnsubscribeCommandLogs(id string, ch chan types.LogEntry) {
+	o.mu.RLock()
+	runner, ok := o.commands[id]
+	o.mu.RUnlock()
+
+	if !ok {
+		return
+	}
+	runner.Unsubscribe(ch)
+}
+
+// ListLogRuns returns metadata about persisted log files for a service or command.
+func (o *Orchestrator) ListLogRuns(name string) ([]logging.LogRunInfo, error) {
+	return logging.ListRuns(o.cfg.ResolvedLogsDir(), name)
+}
+
+// ReadLogFile reads a persisted log file.
+func (o *Orchestrator) ReadLogFile(path string, n int) ([]string, error) {
+	return logging.ReadLogFile(path, n)
 }
 
 func splitServiceID(id string) (parent, child string) {

@@ -1,0 +1,33 @@
+#!/bin/bash
+# Mock npx - simulates npx commands
+echo "[mock-npx] Running: npx $*"
+
+case "$1" in
+  prisma)
+    case "$2" in
+      migrate)
+        echo "[mock-npx] Running database migration..."
+        sleep 0.1
+        echo "[mock-npx] Migration completed: 3 migrations applied"
+        ;;
+      db)
+        echo "[mock-npx] Running database seed..."
+        sleep 0.1
+        echo "[mock-npx] Seeded 100 records"
+        ;;
+      *)
+        echo "[mock-npx] Prisma command: $2"
+        ;;
+    esac
+    ;;
+  prettier)
+    echo "[mock-npx] Formatting files..."
+    sleep 0.1
+    echo "[mock-npx] Formatted 25 files"
+    ;;
+  *)
+    echo "[mock-npx] Executing: $*"
+    ;;
+esac
+
+exit 0

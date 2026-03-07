@@ -1,0 +1,57 @@
+#!/bin/bash
+# Mock npm - simulates npm commands for testing
+echo "[mock-npm] Running: npm $*"
+
+case "$1" in
+  install)
+    echo "[mock-npm] Installing dependencies..."
+    sleep 0.1
+    echo "[mock-npm] added 342 packages in 2.1s"
+    ;;
+  run)
+    case "$2" in
+      build)
+        echo "[mock-npm] Building project..."
+        sleep 0.1
+        echo "[mock-npm] Build completed successfully"
+        ;;
+      dev)
+        echo "[mock-npm] Starting development server..."
+        echo "[mock-npm] Local: http://localhost:3000"
+        echo "[mock-npm] Dev server ready"
+        # Keep running like a real dev server until killed
+        while true; do
+          sleep 1
+        done
+        ;;
+      lint)
+        echo "[mock-npm] Linting..."
+        sleep 0.1
+        echo "[mock-npm] No lint errors found"
+        ;;
+      test)
+        echo "[mock-npm] Running tests..."
+        sleep 0.1
+        echo "[mock-npm] Tests: 42 passed, 0 failed"
+        ;;
+      codegen)
+        echo "[mock-npm] Generating types..."
+        sleep 0.1
+        echo "[mock-npm] Generated 15 type definitions"
+        ;;
+      *)
+        echo "[mock-npm] Running script: $2"
+        ;;
+    esac
+    ;;
+  test)
+    echo "[mock-npm] Running tests..."
+    sleep 0.1
+    echo "[mock-npm] Tests: 42 passed, 0 failed"
+    ;;
+  *)
+    echo "[mock-npm] Unknown command: $1"
+    ;;
+esac
+
+exit 0

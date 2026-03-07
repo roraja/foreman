@@ -1,6 +1,6 @@
 # Foreman
 
-A single-binary, cross-platform local services monitor and manager. Start, stop, restart, build, and monitor all your development services from one web dashboard.
+A single-binary, cross-platform local services monitor and manager. Start, stop, restart, build, and monitor all your development services from one web dashboard. Define reusable commands, compose configs from multiple YAML files, and run tasks from the CLI or web UI.
 
 ## Install
 
@@ -27,27 +27,38 @@ go build -o bin/foreman ./cmd/foreman
 ```bash
 # Create a config file
 cp foreman.example.yaml foreman.yaml
-# Edit foreman.yaml to define your services
+# Edit foreman.yaml to define your services and commands
 
-# Run
+# Start the dashboard
 foreman -c foreman.yaml
 # Open http://127.0.0.1:9090 in your browser
+
+# List all commands
+foreman commands -c foreman.yaml
+
+# Run a command
+foreman run install -c foreman.yaml
 ```
 
 ## Features
 
 - **Single binary** — Go binary with embedded web UI, no runtime dependencies
-- **Real-time logs** — WebSocket-based live log streaming per service
+- **Commands** — Reusable, composable command definitions with dependencies, parallel execution, and timeouts
+- **Composable config** — Import and merge multiple YAML files via `imports`
+- **Real-time logs** — WebSocket-based live log streaming per service and command
 - **Interactive stdin** — Send input to running processes from the web UI
 - **Docker Compose** — Auto-discovers services from compose files
 - **Build integration** — Per-service build commands with output in log viewer
+- **Cross-platform** — Platform-specific command overrides for Linux, macOS, and Windows
 - **Config reload** — Hot-reload `foreman.yaml` without stopping running services
 - **Authenticated** — Password-protected web UI and API token support
 - **Environment inspector** — View resolved environment variables per service
 
 ## Configuration
 
-See [foreman.example.yaml](foreman.example.yaml) for a complete example.
+See [foreman.example.yaml](foreman.example.yaml) for a complete example, or explore the [example-repo/](example-repo/) for a full project setup with mock binaries.
+
+### Services
 
 ```yaml
 project_root: .
@@ -63,14 +74,153 @@ services:
     build:
       command: go
       args: ["build", "-o", "bin/api-server", "."]
-    health_check:
-      url: http://localhost:8080/health
 
   docker-stack:
     type: docker-compose
     compose_file: docker-compose.yml
     auto_start: true
 ```
+
+### Commands
+
+Commands are reusable, one-shot task definitions. They support dependencies, parallel execution, timeouts, and cross-platform overrides.
+
+```yaml
+commands:
+  install:
+    label: "Install Dependencies"
+    description: "Install all project dependencies"
+    group: setup
+    tags: [deps, install]
+    run: "npm install"
+    timeout: "2m"
+
+  build-api:
+    label: "Build API"
+    group: build
+    command: go
+    args: ["build", "-o", "./bin/api", "./cmd/api"]
+    working_dir: ./backend
+
+  build-frontend:
+    label: "Build Frontend"
+    group: build
+    run: "npm run build"
+    working_dir: ./frontend
+    depends_on: [install]
+
+  build-all:
+    label: "Build Everything"
+    group: build
+    run: "echo 'All builds complete'"
+    parallel: [build-api, build-frontend]
+
+  lint:
+    label: "Lint"
+    group: quality
+    run: "npm run lint"
+    ignore_errors: true
+
+  db-reset:
+    label: "Reset Database"
+    group: database
+    run: "npx prisma migrate reset --force"
+    confirm: true
+```
+
+#### Command fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `label` | string | Human-readable name (defaults to command ID) |
+| `description` | string | What the command does (shown in UI/search) |
+| `group` | string | Category for grouping |
+| `tags` | list | Tags for search/filtering |
+| `run` | string | Shell command (implies `shell: true`) |
+| `command` | string | Executable path (mutually exclusive with `run`) |
+| `args` | list | Arguments to pass |
+| `shell` | bool | Wrap in platform shell (default: false) |
+| `env` | map | Inline environment variables |
+| `env_file` | string | Path to `.env` file |
+| `working_dir` | string | Working directory (relative to `project_root`) |
+| `platform` | map | OS-specific overrides (`linux`, `darwin`, `windows`) |
+| `depends_on` | list | Commands to run sequentially before this one |
+| `parallel` | list | Commands to run in parallel before this one |
+| `timeout` | string | Kill if exceeded (e.g. `"30s"`, `"5m"`) |
+| `ignore_errors` | bool | Continue even if exit code ≠ 0 |
+| `confirm` | bool | Prompt before running |
+| `interactive` | bool | Needs stdin |
+
+#### Service → Command reference
+
+Services can reference commands instead of inlining `command`/`args`:
+
+```yaml
+commands:
+  run-api:
+    command: go
+    args: ["run", "./cmd/api"]
+    env:
+      GIN_MODE: debug
+
+services:
+  api:
+    uses: run-api            # reuse the command definition
+    auto_start: true
+    env:
+      PORT: "8080"           # merged into run-api's env
+    build:
+      uses: build-api        # build step also references a command
+```
+
+### Composable Config (Imports)
+
+Split your configuration across multiple YAML files using `imports`. Imported commands and services are merged into the main config, with the base file taking precedence for duplicate IDs.
+
+```yaml
+# foreman.yaml
+imports:
+  - db-commands.yaml         # relative path
+  - quality-commands.yaml
+  - shared/services.yaml     # nested paths work too
+
+commands:
+  install:
+    run: "npm install"
+```
+
+```yaml
+# db-commands.yaml
+commands:
+  db-migrate:
+    label: "Run Migrations"
+    run: "npx prisma migrate deploy"
+    depends_on: [install]     # can reference commands from the parent
+```
+
+Imports support:
+- **Relative paths** resolved from the importing file's directory
+- **Nested imports** (imported files can import other files)
+- **Circular import detection** with automatic error reporting
+- **Depth limiting** (max 10 levels) to prevent runaway imports
+- **Commands and services** from imported files are merged
+
+### Cross-Platform Commands
+
+```yaml
+commands:
+  format:
+    label: "Format Code"
+    platform:
+      linux:
+        run: "gofmt -w . && npx prettier --write ."
+      darwin:
+        run: "gofmt -w . && npx prettier --write ."
+      windows:
+        run: "gofmt -w . && npx prettier --write ."
+```
+
+At runtime, Foreman checks `runtime.GOOS` and merges the matching platform block over the base definition.
 
 ### Environment Variables
 
@@ -121,6 +271,11 @@ services:
 
 **Priority order** (highest wins): inline `env` > per-service `env_file` > root `env_file`.
 
+When a service uses `uses` to reference a command, environment variables are merged:
+```
+command env → platform env → service env
+```
+
 The `.env` file format supports `KEY=value` pairs, blank lines, `#` comments, and optional quoting:
 
 ```env
@@ -136,13 +291,30 @@ SECRET_KEY='s3cret'
 ## CLI Usage
 
 ```bash
-foreman -c foreman.yaml          # Start with config file
-foreman -config path/to/config   # Long flag form
+# Start the web dashboard (default mode)
+foreman -c foreman.yaml
+foreman -config path/to/config
+
+# List all commands
+foreman commands -c foreman.yaml
+foreman commands -c foreman.yaml -group build     # filter by group
+foreman commands -c foreman.yaml -tag ci           # filter by tag
+foreman commands -c foreman.yaml -q "database"     # search
+
+# Run a command
+foreman run install -c foreman.yaml
+foreman run build-api -c foreman.yaml --dry-run    # show what would run
+foreman run install db-migrate db-seed -c foreman.yaml  # sequential
+foreman run lint test --parallel -c foreman.yaml        # parallel
+foreman run build -c foreman.yaml --env NODE_ENV=production
+foreman run build -c foreman.yaml -- --extra-flag       # extra args
 ```
 
 ## API
 
 All API endpoints require authentication via cookie (after login) or Bearer token.
+
+### Service Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -157,7 +329,29 @@ All API endpoints require authentication via cookie (after login) or Bearer toke
 | POST | `/api/config/reload` | Reload configuration |
 | GET | `/api/health` | Health check |
 
+### Command Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/commands` | List all commands |
+| GET | `/api/commands?q=search` | Search commands |
+| GET | `/api/commands?group=build` | Filter by group |
+| GET | `/api/commands?tag=ci` | Filter by tag |
+| POST | `/api/command/{id}/run` | Run a command (body: `{"env": {}, "args": []}`) |
+| GET | `/api/command/{id}/status` | Get command status |
+| GET | `/api/command/{id}/logs?lines=100` | Get command output |
+| POST | `/api/command/{id}/cancel` | Cancel a running command |
+
+### WebSocket Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `WS /ws/logs/{service-id}` | Stream service logs in real time |
+| `WS /ws/stdin/{service-id}` | Send stdin to a service |
+| `WS /ws/command/{command-id}` | Stream command output in real time |
+
 ## Documentation
 
 - [Architecture](docs/architecture.md) — System design and component overview
 - [Development](docs/development.md) — How to build and develop Foreman
+- [Commands Spec](docs/next/commands.md) — Full commands feature specification

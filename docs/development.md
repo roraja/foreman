@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- **Go 1.22+** (tested with 1.22.12)
+- **Go 1.22+** (tested with 1.25.0)
 - **Docker** (optional, for docker-compose service management)
 
 ## Building
@@ -53,10 +53,11 @@ graph LR
 ### 1. Edit code
 
 All Go source is in `internal/` with clear package boundaries:
-- `config/` — Change YAML schema or parsing
+- `config/` — Change YAML schema, parsing, or import merging
+- `command/` — Change command execution, dependency resolution, or timeouts
 - `process/` — Change process management behavior
 - `docker/` — Change Docker Compose integration
-- `orchestrator/` — Change service coordination logic
+- `orchestrator/` — Change service/command coordination logic
 - `server/` — Change API endpoints or web UI
 - `types/` — Change shared data structures
 

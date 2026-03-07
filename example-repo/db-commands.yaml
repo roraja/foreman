@@ -1,0 +1,34 @@
+# Database commands - imported by the main foreman.yaml
+# This file demonstrates YAML composability via imports
+
+commands:
+  db-migrate:
+    label: "Run Migrations"
+    description: "Apply database migrations"
+    group: database
+    tags: [db, migrate]
+    command: ./mock-bin/npx
+    args: ["prisma", "migrate", "deploy"]
+    env:
+      DATABASE_URL: "postgresql://localhost:5432/mydb"
+    depends_on: [install]
+
+  db-seed:
+    label: "Seed Database"
+    description: "Populate database with test data"
+    group: database
+    tags: [db, seed]
+    command: ./mock-bin/npx
+    args: ["prisma", "db", "seed"]
+    env:
+      DATABASE_URL: "postgresql://localhost:5432/mydb"
+    depends_on: [db-migrate]
+    confirm: true
+
+  db-reset:
+    label: "Reset Database"
+    description: "Drop, recreate, migrate, and seed the database"
+    group: database
+    tags: [db, reset, destructive]
+    run: "./mock-bin/npx prisma migrate reset --force"
+    confirm: true

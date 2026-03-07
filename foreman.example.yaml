@@ -7,6 +7,45 @@ port: 9090
 host: 127.0.0.1
 log_retention_lines: 5000
 
+# Import additional config files (commands, services, etc.)
+# imports:
+#   - db-commands.yaml
+#   - quality-commands.yaml
+
+# Reusable command definitions
+commands:
+  install:
+    label: "Install Dependencies"
+    description: "Install all project dependencies"
+    group: setup
+    tags: [deps, install]
+    run: "npm install"
+    timeout: "2m"
+
+  build:
+    label: "Build"
+    description: "Build the project"
+    group: build
+    tags: [build]
+    run: "echo 'Build step would run here'"
+    depends_on: [install]
+
+  lint:
+    label: "Lint"
+    description: "Run linters"
+    group: quality
+    tags: [lint, ci]
+    run: "echo 'Linting...'"
+    ignore_errors: true
+
+  test:
+    label: "Test"
+    description: "Run test suite"
+    group: quality
+    tags: [test, ci]
+    run: "echo 'Running tests...'"
+    timeout: "5m"
+
 services:
   echo-test:
     label: "Echo Test Service"
@@ -26,6 +65,16 @@ services:
       command: echo
       args: ["build step would run here"]
 
+  # Example: service referencing a command via 'uses'
+  # api:
+  #   label: "API Server"
+  #   uses: run-api              # references a command definition
+  #   auto_start: true
+  #   env:
+  #     PORT: "8080"
+  #   build:
+  #     uses: build              # build step can also reference a command
+
   # Example using binary_source to download and run a GitHub release binary.
   # Foreman will auto-download the binary for the current OS/arch to ~/.foreman/bin/
   # on first start.
@@ -35,10 +84,3 @@ services:
   #   binary_source: "https://github.com/roraja/foreman/releases/tag/v0.0.2"
   #   args: ["--port", "8080"]
   #   auto_start: false
-  #
-  # If the release asset name differs from the repo name, specify binary_name:
-  # markdown-viewer:
-  #   label: "Markdown Viewer"
-  #   binary_source: "https://github.com/roraja/markdown-go/releases/tag/v1.0.1"
-  #   binary_name: mdviewer
-  #   args: ["--port", "9966"]

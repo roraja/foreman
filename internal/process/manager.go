@@ -13,6 +13,7 @@ import (
 
 	"github.com/anthropic/foreman/internal/binary"
 	"github.com/anthropic/foreman/internal/config"
+	"github.com/anthropic/foreman/internal/logging"
 	"github.com/anthropic/foreman/internal/types"
 )
 
@@ -31,6 +32,7 @@ type Process struct {
 	restarts  int
 	logs      *types.LogBuffer
 	cancel    context.CancelFunc
+	fileLog   *logging.FileLogger
 
 	// subscribers receive new log entries in real-time
 	subMu       sync.RWMutex
@@ -46,6 +48,11 @@ func NewProcess(id string, cfg *config.ServiceConfig, bufferSize int) *Process {
 		logs:        types.NewLogBuffer(bufferSize),
 		subscribers: make(map[chan types.LogEntry]struct{}),
 	}
+}
+
+// SetFileLogger attaches a file logger for persisting logs to disk.
+func (p *Process) SetFileLogger(fl *logging.FileLogger) {
+	p.fileLog = fl
 }
 
 // Start launches the process.
@@ -71,6 +78,13 @@ func (p *Process) Start() error {
 	if p.status == types.StatusRunning || p.status == types.StatusStarting {
 		log.Printf("[%s] already running, skipping start", p.ID)
 		return fmt.Errorf("service %s is already running", p.ID)
+	}
+
+	// Start new file log run
+	if p.fileLog != nil {
+		if err := p.fileLog.StartRun(); err != nil {
+			log.Printf("[%s] warning: could not start file log: %v", p.ID, err)
+		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -308,6 +322,9 @@ func (p *Process) emitLog(stream, line string) {
 	}
 	p.logs.Add(entry)
 	p.broadcast(entry)
+	if p.fileLog != nil {
+		p.fileLog.WriteLog(stream, line)
+	}
 }
 
 func (p *Process) streamOutput(r io.Reader, stream string) {
@@ -315,13 +332,17 @@ func (p *Process) streamOutput(r io.Reader, stream string) {
 	// Allow larger lines (1MB)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
+		line := scanner.Text()
 		entry := types.LogEntry{
 			Timestamp: time.Now(),
 			Stream:    stream,
-			Line:      scanner.Text(),
+			Line:      line,
 		}
 		p.logs.Add(entry)
 		p.broadcast(entry)
+		if p.fileLog != nil {
+			p.fileLog.WriteLog(stream, line)
+		}
 	}
 }
 

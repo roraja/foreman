@@ -1,0 +1,27 @@
+#!/bin/bash
+# Mock go - simulates Go toolchain commands
+echo "[mock-go] Running: go $*"
+
+case "$1" in
+  build)
+    echo "[mock-go] Building..."
+    sleep 0.1
+    echo "[mock-go] Build successful"
+    ;;
+  run)
+    echo "[mock-go] Running $2..."
+    echo "[mock-go] Server starting on :8080"
+    sleep 0.2
+    echo "[mock-go] Server ready"
+    ;;
+  test)
+    echo "[mock-go] Testing..."
+    sleep 0.1
+    echo "[mock-go] ok  ./... 0.5s"
+    ;;
+  *)
+    echo "[mock-go] Unknown command: $1"
+    ;;
+esac
+
+exit 0

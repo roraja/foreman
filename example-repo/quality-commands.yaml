@@ -1,0 +1,33 @@
+# Quality/CI commands - imported by the main foreman.yaml
+
+commands:
+  lint:
+    label: "Lint"
+    description: "Run linters"
+    group: quality
+    tags: [lint, ci]
+    run: "./mock-bin/npm run lint"
+    ignore_errors: true
+
+  test:
+    label: "Run Tests"
+    description: "Run the test suite"
+    group: quality
+    tags: [test, ci]
+    run: "./mock-bin/npm test"
+    timeout: "5m"
+
+  typecheck:
+    label: "Type Check"
+    description: "Run TypeScript type checking"
+    group: quality
+    tags: [typecheck, ci]
+    run: "./mock-bin/npm run typecheck"
+
+  verify:
+    label: "Verify All"
+    description: "Run all quality checks in parallel"
+    group: quality
+    tags: [verify, ci]
+    run: "echo 'All checks passed'"
+    parallel: [lint, typecheck]
