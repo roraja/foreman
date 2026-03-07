@@ -2,8 +2,22 @@
 # Foreman installer — downloads the latest binary to ~/.local/bin
 set -eu
 
-BASE_URL="https://github.com/roraja/foreman/releases/download"
-VERSION="${FOREMAN_VERSION:-v0.0.2}"
+REPO="roraja/foreman"
+BASE_URL="https://github.com/${REPO}/releases/download"
+
+# Resolve latest version from GitHub if not explicitly set
+if [ -z "${FOREMAN_VERSION:-}" ]; then
+    if command -v curl >/dev/null 2>&1; then
+        VERSION="$(curl -fsSL -o /dev/null -w '%{redirect_url}' "https://github.com/${REPO}/releases/latest" | grep -oE '[^/]+$')"
+    elif command -v wget >/dev/null 2>&1; then
+        VERSION="$(wget --spider --max-redirect=0 "https://github.com/${REPO}/releases/latest" 2>&1 | grep -oP 'Location: \K[^ ]+' | grep -oE '[^/]+$')"
+    fi
+    if [ -z "${VERSION:-}" ]; then
+        echo "Error: could not determine latest version. Set FOREMAN_VERSION explicitly."; exit 1
+    fi
+else
+    VERSION="$FOREMAN_VERSION"
+fi
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"

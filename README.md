@@ -22,6 +22,27 @@ FOREMAN_VERSION=v0.0.3 INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubu
 go build -o bin/foreman ./cmd/foreman
 ```
 
+## Install Binary and Boot Service
+
+Download the latest foreman, install it to your PATH, and set it up as a systemd service that starts on boot:
+
+```bash
+# Download and install the binary
+curl -fsSL https://raw.githubusercontent.com/roraja/foreman/main/install.sh | INSTALL_DIR=/usr/local/bin sh
+
+# Install foreman as a user systemd service (starts on boot)
+foreman install
+```
+
+This copies the binary to `~/.foreman/foreman`, creates a default config at `~/.foreman/foreman.yaml`, and enables a systemd user service. Once running, register any project to start on boot:
+
+```bash
+cd /path/to/my-project
+foreman runOnBoot
+```
+
+This adds the project as a service in the global `~/.foreman/foreman.yaml` so the boot-level foreman starts it automatically.
+
 ## Quick Start
 
 ```bash
