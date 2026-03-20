@@ -633,6 +633,83 @@ func TestIsShellExplicit(t *testing.T) {
 	}
 }
 
+func TestLoadLinkService(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "foreman.yaml", `
+project_root: .
+services:
+  my-link:
+    label: "My Dashboard"
+    type: link
+    group: links
+    url: "http://localhost:8000"
+`)
+	cfg, err := Load(filepath.Join(dir, "foreman.yaml"))
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if len(cfg.Services) != 1 {
+		t.Fatalf("expected 1 service, got %d", len(cfg.Services))
+	}
+	svc := cfg.Services["my-link"]
+	if svc.Type != "link" {
+		t.Errorf("expected type 'link', got %q", svc.Type)
+	}
+	if svc.Label != "My Dashboard" {
+		t.Errorf("expected label 'My Dashboard', got %q", svc.Label)
+	}
+	if svc.URL != "http://localhost:8000" {
+		t.Errorf("expected url 'http://localhost:8000', got %q", svc.URL)
+	}
+	if svc.Group != "links" {
+		t.Errorf("expected group 'links', got %q", svc.Group)
+	}
+	// Link services should not have working_dir resolved
+	if svc.WorkingDir != "" {
+		t.Errorf("expected empty working_dir for link service, got %q", svc.WorkingDir)
+	}
+}
+
+func TestLoadLinkServiceRequiresURL(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "foreman.yaml", `
+project_root: .
+services:
+  bad-link:
+    label: "Missing URL"
+    type: link
+    group: links
+`)
+	_, err := Load(filepath.Join(dir, "foreman.yaml"))
+	if err == nil {
+		t.Fatal("expected error for link service without url, got nil")
+	}
+}
+
+func TestLoadLinkServiceWithEnvInterpolation(t *testing.T) {
+	os.Setenv("TEST_LINK_PORT", "9000")
+	defer os.Unsetenv("TEST_LINK_PORT")
+
+	dir := t.TempDir()
+	writeFile(t, dir, "foreman.yaml", `
+project_root: .
+services:
+  my-link:
+    label: "Dashboard"
+    type: link
+    group: links
+    url: "http://localhost:${TEST_LINK_PORT}"
+`)
+	cfg, err := Load(filepath.Join(dir, "foreman.yaml"))
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	svc := cfg.Services["my-link"]
+	if svc.URL != "http://localhost:9000" {
+		t.Errorf("expected url with interpolated port, got %q", svc.URL)
+	}
+}
+
 func writeFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 	path := filepath.Join(dir, name)

@@ -121,6 +121,7 @@ const inlineHTML = `<!DOCTYPE html>
   .status-dot.success { background: var(--green); }
   .status-dot.failed { background: var(--red); box-shadow: 0 0 6px var(--red); }
   .status-dot.canceled { background: var(--orange); }
+  .status-dot.link { background: var(--blue); }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
   .status-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
   .status-label.running { color: var(--green); }
@@ -133,6 +134,7 @@ const inlineHTML = `<!DOCTYPE html>
   .status-label.success { color: var(--green); }
   .status-label.failed { color: var(--red); }
   .status-label.canceled { color: var(--orange); }
+  .status-label.link { color: var(--blue); }
 
   .service-name { font-weight: 500; flex: 1; font-size: 14px; }
   .service-type { color: var(--muted); font-size: 11px; background: var(--bg); padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -517,7 +519,7 @@ function capitalise(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 function getServiceCounts() {
   const all = flattenServices(services);
   let running = 0, stopped = 0, errored = 0;
-  all.forEach(s => { if (s.status === 'running') running++; else if (s.status === 'crashed' || s.status === 'unhealthy') errored++; else if (s.status === 'stopped') stopped++; });
+  all.forEach(s => { if (s.type === 'link') return; if (s.status === 'running') running++; else if (s.status === 'crashed' || s.status === 'unhealthy') errored++; else if (s.status === 'stopped') stopped++; });
   return { running, stopped, errored, total: all.length };
 }
 
@@ -620,12 +622,24 @@ function renderServicesTab() {
 }
 
 function renderService(s, isChild) {
+  const isLink = s.type === 'link';
   const statusClass = String(s.status).toLowerCase().replace(/\s/g, '');
   const isPending = !!pendingActions[s.id];
   const pendingLabel = pendingActions[s.id];
-  const effectiveStatus = isPending ? pendingLabel : statusClass;
+  const effectiveStatus = isLink ? 'link' : (isPending ? pendingLabel : statusClass);
 
   let html = '<div class="service-card' + (isChild ? ' children' : '') + (isPending ? ' pending' : '') + '">';
+  if (isLink) {
+    html += '<div class="service-row" onclick="window.open(\'' + escAttr(s.url) + '\',\'_blank\')" style="cursor:pointer" title="Open ' + escAttr(s.url) + '">';
+    html += '<div class="status-indicator"><div class="status-dot link"></div><span class="status-label link">link</span></div>';
+    html += '<span class="service-name">' + escHtml(s.label || s.id) + '</span>';
+    html += '<span class="service-type">' + escHtml(s.type) + '</span>';
+    html += '<div class="service-actions" onclick="event.stopPropagation()">';
+    html += '<button class="btn btn-sm btn-blue" onclick="window.open(\'' + escAttr(s.url) + '\',\'_blank\')" title="Open">🔗 Open</button>';
+    html += '</div></div></div>';
+    return html;
+  }
+
   html += '<div class="service-row" onclick="toggleExpand(\'' + escAttr(s.id) + '\')">';
   html += '<div class="status-indicator"><div class="status-dot ' + effectiveStatus + '"></div><span class="status-label ' + effectiveStatus + '">' + effectiveStatus + '</span></div>';
   html += '<span class="service-name">' + escHtml(s.label || s.id) + '</span>';

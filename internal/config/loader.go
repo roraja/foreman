@@ -169,6 +169,21 @@ func Load(path string) (*Config, error) {
 	}
 
 	for id, svc := range cfg.Services {
+		if svc.Label == "" {
+			svc.Label = id
+		}
+		if svc.Type == "" {
+			svc.Type = "process"
+		}
+
+		// Link services are URL-only — skip command/env/workdir resolution
+		if svc.Type == "link" {
+			if svc.URL == "" {
+				return nil, fmt.Errorf("service %s: link type requires a 'url' field", id)
+			}
+			continue
+		}
+
 		if svc.Uses != "" {
 			if svc.Command != "" {
 				return nil, fmt.Errorf("service %s: 'uses' and 'command' are mutually exclusive", id)
@@ -189,13 +204,6 @@ func Load(path string) (*Config, error) {
 				return nil, fmt.Errorf("service %s build: uses references unknown command %q", id, svc.Build.Uses)
 			}
 			resolveBuildFromCommand(svc.Build, cmdCfg)
-		}
-
-		if svc.Label == "" {
-			svc.Label = id
-		}
-		if svc.Type == "" {
-			svc.Type = "process"
 		}
 
 		if svc.WorkingDir != "" && !filepath.IsAbs(svc.WorkingDir) {

@@ -12,6 +12,9 @@ import (
 func setSysProcAttr(cmd *exec.Cmd) {}
 
 // gracefulStop kills the process on Windows (no SIGTERM support).
+// It calls cmd.Wait() to reap the child — the concurrent waitForExit goroutine
+// will get an error from its own Wait() call, but the generation check prevents
+// it from corrupting state.
 func gracefulStop(cmd *exec.Cmd, id string) {
 	_ = cmd.Process.Kill()
 

@@ -84,6 +84,7 @@ foreman run install -c foreman.yaml
 - **Build integration** — Per-service build commands with output in log viewer
 - **Cross-platform** — Platform-specific command overrides for Linux, macOS, and Windows
 - **Config reload** — Hot-reload `foreman.yaml` without stopping running services
+- **Link services** — URL-only entries for quick access to related web interfaces
 - **Authenticated** — Password-protected web UI and API token support
 - **Environment inspector** — View resolved environment variables per service
 
@@ -113,6 +114,27 @@ services:
     compose_file: docker-compose.yml
     auto_start: true
 ```
+
+### Link Services
+
+Link services are URL-only entries that appear in the dashboard as clickable cards. They don't run a process — clicking opens the URL in a new browser tab. Useful for quick access to related web interfaces (monitoring dashboards, API docs, forwarded ports, etc.).
+
+```yaml
+services:
+  my-dashboard:
+    label: "Dashboard"
+    type: link
+    group: links
+    url: "http://localhost:8000"
+
+  monitoring:
+    label: "Grafana"
+    type: link
+    group: links
+    url: "http://${REMOTE_IP:-localhost}:3001"
+```
+
+Link services support environment variable interpolation in the `url` field. The `url` field is required for link services.
 
 ### Commands
 

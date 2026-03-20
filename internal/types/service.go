@@ -24,6 +24,7 @@ type ServiceType string
 const (
 	TypeProcess       ServiceType = "process"
 	TypeDockerCompose ServiceType = "docker-compose"
+	TypeLink          ServiceType = "link"
 )
 
 // LogEntry represents a single log line from a service.

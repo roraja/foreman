@@ -15,6 +15,9 @@ func setSysProcAttr(cmd *exec.Cmd) {
 }
 
 // gracefulStop sends SIGTERM to the process group, then SIGKILL after timeout.
+// It calls cmd.Wait() to reap the child — the concurrent waitForExit goroutine
+// will get an error from its own Wait() call, but the generation check prevents
+// it from corrupting state.
 func gracefulStop(cmd *exec.Cmd, id string) {
 	_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 

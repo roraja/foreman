@@ -16,6 +16,23 @@ import (
 	"github.com/anthropic/foreman/internal/types"
 )
 
+// LinkService represents a URL-only service with no process.
+type LinkService struct {
+	ID     string
+	Config *config.ServiceConfig
+}
+
+// Info returns the ServiceInfo for this link.
+func (l *LinkService) Info() types.ServiceInfo {
+	return types.ServiceInfo{
+		ID:    l.ID,
+		Label: l.Config.Label,
+		Group: l.Config.Group,
+		Type:  types.TypeLink,
+		URL:   l.Config.URL,
+	}
+}
+
 // Orchestrator coordinates all services (native processes + docker-compose).
 type Orchestrator struct {
 	mu              sync.RWMutex
@@ -23,6 +40,7 @@ type Orchestrator struct {
 	configPath      string
 	processes       map[string]*process.Process
 	composeManagers map[string]*docker.ComposeManager
+	links           map[string]*LinkService
 	commands        map[string]*command.Runner
 }
 
@@ -33,6 +51,7 @@ func New(cfg *config.Config, configPath string) *Orchestrator {
 		configPath:      configPath,
 		processes:       make(map[string]*process.Process),
 		composeManagers: make(map[string]*docker.ComposeManager),
+		links:           make(map[string]*LinkService),
 		commands:        make(map[string]*command.Runner),
 	}
 	o.initServices()
@@ -51,6 +70,9 @@ func (o *Orchestrator) initServices() {
 				log.Printf("warning: could not discover services for %s: %v", id, err)
 			}
 			o.composeManagers[id] = cm
+		} else if svc.Type == "link" {
+			log.Printf("  creating link: %s (url: %s)", id, svc.URL)
+			o.links[id] = &LinkService{ID: id, Config: svc}
 		} else {
 			log.Printf("  creating process: %s (command: %s)", id, svc.Command)
 			p := process.NewProcess(id, svc, o.cfg.LogRetentionLines)
@@ -60,7 +82,7 @@ func (o *Orchestrator) initServices() {
 			o.processes[id] = p
 		}
 	}
-	log.Printf("initialized %d processes and %d compose managers", len(o.processes), len(o.composeManagers))
+	log.Printf("initialized %d processes, %d compose managers, %d links", len(o.processes), len(o.composeManagers), len(o.links))
 }
 
 // StartService starts a service by ID. For docker-compose, use "parent/child" for sub-services.
@@ -172,6 +194,9 @@ func (o *Orchestrator) ListServices() []types.ServiceInfo {
 	for _, cm := range o.composeManagers {
 		result = append(result, cm.Info())
 	}
+	for _, l := range o.links {
+		result = append(result, l.Info())
+	}
 
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].Group != result[j].Group {
@@ -194,6 +219,9 @@ func (o *Orchestrator) GetServiceInfo(id string) (types.ServiceInfo, error) {
 	if cm, ok := o.composeManagers[id]; ok {
 		_ = cm.RefreshStatus()
 		return cm.Info(), nil
+	}
+	if l, ok := o.links[id]; ok {
+		return l.Info(), nil
 	}
 	return types.ServiceInfo{}, fmt.Errorf("service %s not found", id)
 }
@@ -353,6 +381,9 @@ func (o *Orchestrator) ReloadConfig() (added []string, removed []string, err err
 		if _, existsCompose := o.composeManagers[id]; existsCompose {
 			continue
 		}
+		if _, existsLink := o.links[id]; existsLink {
+			continue
+		}
 		added = append(added, id)
 	}
 
@@ -367,6 +398,11 @@ func (o *Orchestrator) ReloadConfig() (added []string, removed []string, err err
 			removed = append(removed, id)
 		}
 	}
+	for id := range o.links {
+		if _, exists := newCfg.Services[id]; !exists {
+			removed = append(removed, id)
+		}
+	}
 
 	// Add new services
 	for _, id := range added {
@@ -375,6 +411,8 @@ func (o *Orchestrator) ReloadConfig() (added []string, removed []string, err err
 			cm := docker.NewComposeManager(id, svc, newCfg.LogRetentionLines)
 			_ = cm.DiscoverServices()
 			o.composeManagers[id] = cm
+		} else if svc.Type == "link" {
+			o.links[id] = &LinkService{ID: id, Config: svc}
 		} else {
 			o.processes[id] = process.NewProcess(id, svc, newCfg.LogRetentionLines)
 		}
@@ -388,6 +426,9 @@ func (o *Orchestrator) ReloadConfig() (added []string, removed []string, err err
 		if cm, ok := o.composeManagers[id]; ok {
 			cm.Config = svc
 			_ = cm.DiscoverServices()
+		}
+		if l, ok := o.links[id]; ok {
+			l.Config = svc
 		}
 	}
 

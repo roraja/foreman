@@ -113,3 +113,16 @@ services:
     url: "http://localhost:3000"
     auto_start: false
 
+  # Link services — URL-only entries, no process to manage. Click to open in browser.
+  docs:
+    label: "API Documentation"
+    type: link
+    group: links
+    url: "http://localhost:8080/docs"
+
+  monitoring:
+    label: "Monitoring Dashboard"
+    type: link
+    group: links
+    url: "http://localhost:3001"
+

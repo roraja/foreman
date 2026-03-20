@@ -30,6 +30,7 @@ type Process struct {
 	exitCode  *int
 	startedAt time.Time
 	restarts  int
+	generation uint64 // incremented on each Start() to detect stale waitForExit goroutines
 	logs      *types.LogBuffer
 	cancel    context.CancelFunc
 	fileLog   *logging.FileLogger
@@ -135,14 +136,16 @@ func (p *Process) Start() error {
 	p.pid = cmd.Process.Pid
 	p.startedAt = time.Now()
 	p.status = types.StatusRunning
-	log.Printf("[%s] started successfully (PID: %d)", p.ID, p.pid)
+	p.generation++
+	gen := p.generation
+	log.Printf("[%s] started successfully (PID: %d, gen: %d)", p.ID, p.pid, gen)
 
 	// Stream logs
 	go p.streamOutput(stdout, "stdout")
 	go p.streamOutput(stderr, "stderr")
 
-	// Wait for exit
-	go p.waitForExit()
+	// Wait for exit — pass generation so stale goroutines don't overwrite state
+	go p.waitForExit(cmd, gen)
 
 	return nil
 }
@@ -358,10 +361,30 @@ func (p *Process) broadcast(entry types.LogEntry) {
 	}
 }
 
-func (p *Process) waitForExit() {
-	err := p.cmd.Wait()
+func (p *Process) waitForExit(cmd *exec.Cmd, gen uint64) {
+	err := cmd.Wait()
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	// If a newer process has been started since this goroutine was spawned,
+	// this is a stale exit notification — log it but don't touch the status.
+	if p.generation != gen {
+		log.Printf("[%s] stale waitForExit (gen %d, current %d) — ignoring exit from old process", p.ID, gen, p.generation)
+		return
+	}
+
+	// If Stop() already set the status to stopped/stopping, don't overwrite it.
+	// This handles the case where gracefulStop() already called cmd.Wait() and
+	// this goroutine gets a "waitid: no child processes" error from the double-wait.
+	if p.status == types.StatusStopped || p.status == types.StatusStopping {
+		if err != nil {
+			log.Printf("[%s] waitForExit: process already stopped (status: %s), ignoring wait error: %v", p.ID, p.status, err)
+		} else {
+			log.Printf("[%s] process exited cleanly (code 0)", p.ID)
+		}
+		p.status = types.StatusStopped
+		return
+	}
 
 	if err != nil {
 		exitErr, ok := err.(*exec.ExitError)
@@ -374,13 +397,9 @@ func (p *Process) waitForExit() {
 			log.Printf("[%s] process exited with error: %v", p.ID, err)
 			p.emitLog("stderr", fmt.Sprintf("Process exited with error: %v", err))
 		}
-		if p.status != types.StatusStopping {
-			p.status = types.StatusCrashed
-			log.Printf("[%s] process crashed (was not being stopped)", p.ID)
-			p.emitLog("stderr", "Process crashed unexpectedly")
-		} else {
-			p.status = types.StatusStopped
-		}
+		p.status = types.StatusCrashed
+		log.Printf("[%s] process crashed (was not being stopped)", p.ID)
+		p.emitLog("stderr", "Process crashed unexpectedly")
 	} else {
 		code := 0
 		p.exitCode = &code
