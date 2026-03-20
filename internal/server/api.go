@@ -46,6 +46,7 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/api/services", s.requireAuth(s.handleListServices))
 	s.mux.HandleFunc("/api/services/start-all", s.requireAuth(s.handleStartAll))
 	s.mux.HandleFunc("/api/services/stop-all", s.requireAuth(s.handleStopAll))
+	s.mux.HandleFunc("/api/services/rebuild-restart-all", s.requireAuth(s.handleRebuildRestartAll))
 	s.mux.HandleFunc("/api/health", s.handleHealth)
 	s.mux.HandleFunc("/api/config/reload", s.requireAuth(s.handleReloadConfig))
 
@@ -294,6 +295,19 @@ func (s *Server) handleStopAll(w http.ResponseWriter, r *http.Request) {
 		log.Printf("API: stop-all completed")
 	}()
 	jsonResponse(w, http.StatusAccepted, map[string]string{"status": "stopping"})
+}
+
+func (s *Server) handleRebuildRestartAll(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	log.Printf("API: rebuild-restart-all requested")
+	go func() {
+		results := s.orch.RebuildAndRestartAll()
+		log.Printf("API: rebuild-restart-all completed: %v", results)
+	}()
+	jsonResponse(w, http.StatusAccepted, map[string]string{"status": "rebuilding-and-restarting"})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

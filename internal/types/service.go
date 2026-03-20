@@ -48,6 +48,7 @@ type ServiceInfo struct {
 	AutoStart bool          `json:"auto_start"`
 	HasBuild  bool          `json:"has_build"`
 	URL       string        `json:"url,omitempty"`
+	Command   string        `json:"command,omitempty"`
 	Children  []ServiceInfo `json:"children,omitempty"`
 }
 

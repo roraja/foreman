@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -265,6 +266,19 @@ func (p *Process) Info() types.ServiceInfo {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
+	// Build the full command string for display.
+	// Prefer the actual running command (from p.cmd) which has resolved binary paths;
+	// fall back to config if process hasn't started yet.
+	var cmdStr string
+	if p.cmd != nil && p.cmd.Path != "" {
+		cmdStr = p.cmd.Path + " " + strings.Join(p.cmd.Args[1:], " ")
+	} else {
+		cmdParts := []string{p.Config.Command}
+		cmdParts = append(cmdParts, p.Config.Args...)
+		cmdStr = strings.Join(cmdParts, " ")
+	}
+	cmdStr = strings.TrimSpace(cmdStr)
+
 	info := types.ServiceInfo{
 		ID:        p.ID,
 		Label:     p.Config.Label,
@@ -276,6 +290,7 @@ func (p *Process) Info() types.ServiceInfo {
 		AutoStart: p.Config.AutoStart,
 		HasBuild:  p.Config.Build != nil,
 		URL:       p.Config.URL,
+		Command:   cmdStr,
 	}
 
 	if p.status == types.StatusRunning {

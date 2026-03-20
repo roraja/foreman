@@ -342,6 +342,76 @@ func (o *Orchestrator) StartAutoStart() {
 	}
 }
 
+// RebuildAndRestartAll rebuilds and restarts all auto_start services.
+// For each auto_start process: if it has a build config, run build first, then restart.
+// Docker-compose auto_start services are simply restarted (no build step).
+// Returns a summary of results.
+func (o *Orchestrator) RebuildAndRestartAll() map[string]string {
+	o.mu.RLock()
+	// Collect auto_start services under RLock, then release before doing work
+	type target struct {
+		id       string
+		isDocker bool
+		hasBuild bool
+	}
+	var targets []target
+	for id, p := range o.processes {
+		if p.Config.AutoStart {
+			targets = append(targets, target{id: id, hasBuild: p.Config.Build != nil})
+		}
+	}
+	for id, cm := range o.composeManagers {
+		if cm.Config.AutoStart {
+			targets = append(targets, target{id: id, isDocker: true})
+		}
+	}
+	o.mu.RUnlock()
+
+	results := make(map[string]string)
+	for _, t := range targets {
+		if t.isDocker {
+			log.Printf("rebuild-restart-all: restarting compose %s", t.id)
+			if err := o.RestartService(t.id); err != nil {
+				log.Printf("rebuild-restart-all: restart failed for %s: %v", t.id, err)
+				results[t.id] = "restart-failed"
+			} else {
+				results[t.id] = "restarted"
+			}
+			continue
+		}
+
+		if t.hasBuild {
+			log.Printf("rebuild-restart-all: stopping %s for rebuild", t.id)
+			if err := o.StopService(t.id); err != nil {
+				log.Printf("rebuild-restart-all: stop failed for %s: %v", t.id, err)
+			}
+			log.Printf("rebuild-restart-all: building %s", t.id)
+			if err := o.BuildService(t.id); err != nil {
+				log.Printf("rebuild-restart-all: build failed for %s: %v", t.id, err)
+				results[t.id] = "build-failed"
+				continue
+			}
+			log.Printf("rebuild-restart-all: starting %s after build", t.id)
+			if err := o.StartService(t.id); err != nil {
+				log.Printf("rebuild-restart-all: start failed for %s after build: %v", t.id, err)
+				results[t.id] = "start-failed"
+			} else {
+				results[t.id] = "rebuilt-and-restarted"
+			}
+		} else {
+			log.Printf("rebuild-restart-all: restarting %s (no build)", t.id)
+			if err := o.RestartService(t.id); err != nil {
+				log.Printf("rebuild-restart-all: restart failed for %s: %v", t.id, err)
+				results[t.id] = "restart-failed"
+			} else {
+				results[t.id] = "restarted"
+			}
+		}
+	}
+	log.Printf("rebuild-restart-all: completed (%d services)", len(targets))
+	return results
+}
+
 // StopAll stops all running services.
 func (o *Orchestrator) StopAll() {
 	o.mu.RLock()

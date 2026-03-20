@@ -146,6 +146,7 @@ const inlineHTML = `<!DOCTYPE html>
   .expanded-meta { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
   .meta-item { font-size: 12px; color: var(--muted); }
   .meta-item span { color: var(--text); font-family: monospace; }
+  .meta-cmd { background: var(--bg); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border); font-size: 11px; word-break: break-all; }
 
   /* Log viewer */
   .log-viewer { background: #010409; border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace; font-size: 12px; line-height: 1.6; max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
@@ -337,6 +338,21 @@ function confirmStopAll() {
       try { await api('/api/services/stop-all', { method: 'POST' }); }
       catch (e) { showToast('error', 'Failed to stop all services'); globalAction = null; }
       setTimeout(refreshServices, 1000);
+    }
+  };
+  render();
+}
+
+function confirmRebuildRestartAll() {
+  confirmDialog = {
+    title: 'Rebuild & Restart All Services',
+    message: 'This will rebuild (if build config exists) and restart all auto-start services. Continue?',
+    onConfirm: async () => {
+      confirmDialog = null; globalAction = 'rebuilding-restarting-all'; render();
+      showToast('info', 'Rebuilding & restarting all auto-start services...');
+      try { await api('/api/services/rebuild-restart-all', { method: 'POST' }); }
+      catch (e) { showToast('error', 'Failed to rebuild & restart all services'); globalAction = null; }
+      setTimeout(refreshServices, 2000);
     }
   };
   render();
@@ -541,6 +557,7 @@ function render() {
   if (activeTab === 'services') {
     const anyGlobalAction = !!globalAction;
     html += '<button class="btn btn-green" onclick="startAll()"' + (anyGlobalAction ? ' disabled' : '') + '>▶ Start All</button>';
+    html += '<button class="btn btn-blue" onclick="confirmRebuildRestartAll()"' + (anyGlobalAction ? ' disabled' : '') + '>🔄 Rebuild All</button>';
     html += '<button class="btn btn-red" onclick="confirmStopAll()"' + (anyGlobalAction ? ' disabled' : '') + '>■ Stop All</button>';
   }
   html += '</div></div>';
@@ -560,7 +577,7 @@ function render() {
 
   // Action bar
   if (globalAction) {
-    const label = globalAction === 'starting-all' ? 'Starting all services...' : 'Stopping all services...';
+    const label = globalAction === 'starting-all' ? 'Starting all services...' : globalAction === 'stopping-all' ? 'Stopping all services...' : 'Rebuilding & restarting all services...';
     html += '<div class="action-bar"><span class="spinner"></span> ' + label + '</div>';
   }
 
@@ -661,6 +678,7 @@ function renderService(s, isChild) {
   if (expandedService === s.id) {
     const logs = logEntries[s.id] || [];
     html += '<div class="expanded"><div class="expanded-meta">';
+    if (s.command) html += '<div class="meta-item" style="flex-basis:100%;margin-bottom:4px">Command: <span class="meta-cmd">' + escHtml(s.command) + '</span></div>';
     if (s.pid) html += '<div class="meta-item">PID: <span>' + s.pid + '</span></div>';
     if (s.restarts !== undefined) html += '<div class="meta-item">Restarts: <span>' + s.restarts + '</span></div>';
     if (s.exit_code !== undefined && s.exit_code !== 0) html += '<div class="meta-item">Exit code: <span style="color:var(--red)">' + s.exit_code + '</span></div>';
