@@ -49,6 +49,8 @@ type ServiceInfo struct {
 	HasBuild  bool          `json:"has_build"`
 	URL       string        `json:"url,omitempty"`
 	Command   string        `json:"command,omitempty"`
+	Healthy   *bool         `json:"healthy,omitempty"`
+	HealthNote string       `json:"health_note,omitempty"`
 	Children  []ServiceInfo `json:"children,omitempty"`
 }
 

@@ -157,12 +157,16 @@ func cmdServe(args []string) {
 
 	orch.StartAutoStart()
 
+	supervisorCtx, stopSupervisor := context.WithCancel(context.Background())
+	orch.StartSupervisor(supervisorCtx)
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
 		<-sigCh
 		log.Println("Shutting down...")
+		stopSupervisor()
 		orch.StopAll()
 		os.Exit(0)
 	}()

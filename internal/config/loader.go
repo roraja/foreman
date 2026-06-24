@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -82,6 +83,60 @@ type ServiceConfig struct {
 	Build        *BuildConfig      `yaml:"build"`
 	BinarySource string            `yaml:"binary_source"`
 	BinaryName   string            `yaml:"binary_name"`
+
+	// Supervision: when AutoRestart is true, the supervisor restarts the
+	// process if it crashes or fails its health check, waiting RestartDelay
+	// between attempts and giving up after MaxRetries consecutive failures
+	// (MaxRetries <= 0 means unlimited). Retry counters reset once healthy.
+	AutoRestart  bool         `yaml:"auto_restart"`
+	RestartDelay string       `yaml:"restart_delay"`
+	MaxRetries   int          `yaml:"max_retries"`
+	HealthCheck  *HealthCheck `yaml:"health_check"`
+}
+
+// HealthCheck declares a liveness probe for a process service. A process is
+// considered healthy only when every declared port is in LISTEN state and the
+// listening socket is owned by the service's process (or one of its children).
+// This catches "zombie" processes that stay alive but no longer serve their
+// port (e.g. an SSH tunnel hung against a stale connection).
+type HealthCheck struct {
+	Ports          []int  `yaml:"ports"`            // local TCP ports the process must own
+	Interval       string `yaml:"interval"`         // how often to probe (default 30s)
+	GracePeriod    string `yaml:"grace_period"`     // delay after start before probing (default 15s)
+	KillPortHolder bool   `yaml:"kill_port_holder"` // kill a foreign PID squatting the port before restart
+}
+
+// RestartDelayDuration returns the configured restart delay, defaulting to 5s.
+func (s *ServiceConfig) RestartDelayDuration() time.Duration {
+	if s.RestartDelay == "" {
+		return 5 * time.Second
+	}
+	if d, err := time.ParseDuration(s.RestartDelay); err == nil && d > 0 {
+		return d
+	}
+	return 5 * time.Second
+}
+
+// IntervalDuration returns the health-check interval, defaulting to 30s.
+func (h *HealthCheck) IntervalDuration() time.Duration {
+	if h == nil || h.Interval == "" {
+		return 30 * time.Second
+	}
+	if d, err := time.ParseDuration(h.Interval); err == nil && d > 0 {
+		return d
+	}
+	return 30 * time.Second
+}
+
+// GracePeriodDuration returns the post-start grace period, defaulting to 15s.
+func (h *HealthCheck) GracePeriodDuration() time.Duration {
+	if h == nil || h.GracePeriod == "" {
+		return 15 * time.Second
+	}
+	if d, err := time.ParseDuration(h.GracePeriod); err == nil && d >= 0 {
+		return d
+	}
+	return 15 * time.Second
 }
 
 // BuildConfig defines how to build a service before starting it.
@@ -174,6 +229,14 @@ func Load(path string) (*Config, error) {
 		}
 		if svc.Type == "" {
 			svc.Type = "process"
+		}
+
+		if svc.HealthCheck != nil {
+			for _, port := range svc.HealthCheck.Ports {
+				if port <= 0 || port > 65535 {
+					return nil, fmt.Errorf("service %s: health_check port %d out of range (1-65535)", id, port)
+				}
+			}
 		}
 
 		// Link services are URL-only — skip command/env/workdir resolution

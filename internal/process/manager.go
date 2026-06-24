@@ -36,6 +36,11 @@ type Process struct {
 	cancel    context.CancelFunc
 	fileLog   *logging.FileLogger
 
+	// health tracks the most recent health-check result (set by the supervisor)
+	healthChecked bool
+	healthy       bool
+	healthNote    string
+
 	// subscribers receive new log entries in real-time
 	subMu       sync.RWMutex
 	subscribers map[chan types.LogEntry]struct{}
@@ -137,6 +142,9 @@ func (p *Process) Start() error {
 	p.pid = cmd.Process.Pid
 	p.startedAt = time.Now()
 	p.status = types.StatusRunning
+	p.healthChecked = false
+	p.healthy = false
+	p.healthNote = ""
 	p.generation++
 	gen := p.generation
 	log.Printf("[%s] started successfully (PID: %d, gen: %d)", p.ID, p.pid, gen)
@@ -156,7 +164,7 @@ func (p *Process) Stop() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.status != types.StatusRunning && p.status != types.StatusStarting {
+	if p.status != types.StatusRunning && p.status != types.StatusStarting && p.status != types.StatusUnhealthy {
 		log.Printf("[%s] not running (status: %s), nothing to stop", p.ID, p.status)
 		return nil
 	}
@@ -299,6 +307,11 @@ func (p *Process) Info() types.ServiceInfo {
 	}
 	if p.exitCode != nil {
 		info.ExitCode = p.exitCode
+	}
+	if p.healthChecked {
+		healthy := p.healthy
+		info.Healthy = &healthy
+		info.HealthNote = p.healthNote
 	}
 
 	return info

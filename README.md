@@ -82,6 +82,7 @@ foreman run install -c foreman.yaml
 - **Interactive stdin** — Send input to running processes from the web UI
 - **Docker Compose** — Auto-discovers services from compose files
 - **Build integration** — Per-service build commands with output in log viewer
+- **Health checks & auto-restart** — Port-level liveness probes that catch alive-but-dead processes (e.g. hung SSH tunnels) and restart them with backoff/retries
 - **Cross-platform** — Platform-specific command overrides for Linux, macOS, and Windows
 - **Config reload** — Hot-reload `foreman.yaml` without stopping running services
 - **Link services** — URL-only entries for quick access to related web interfaces
@@ -114,6 +115,46 @@ services:
     compose_file: docker-compose.yml
     auto_start: true
 ```
+
+### Health Checks & Auto-Restart
+
+A process can be `running` (its PID is alive) yet no longer doing its job — a
+classic example is an SSH port-forward (`ssh -N -L ...`) that hangs after a
+network change and stops serving its local port. The supervisor catches this by
+verifying that each declared port is in `LISTEN` state **and owned by the
+service's process (or one of its children)**.
+
+```yaml
+services:
+  tunnel:
+    label: "SSH Tunnel"
+    command: ssh
+    args: ["-N", "-L", "6043:localhost:4310", "remote-host"]
+    auto_start: true
+    auto_restart: true        # restart on crash or failed health check
+    restart_delay: "5m"       # wait between restart attempts (default 5s)
+    max_retries: 20           # give up after N consecutive failures (<=0 = unlimited)
+    health_check:
+      ports: [6043]           # local TCP ports the process must hold open
+      interval: "30s"         # how often to probe (default 30s)
+      grace_period: "15s"     # delay after start before probing (default 15s)
+      kill_port_holder: true  # kill a foreign process squatting the port before restarting
+```
+
+Behavior:
+
+- **`auto_restart`** enables supervision. Without it, foreman starts a service
+  once and never restarts it.
+- **Health check** marks a service `unhealthy` when any declared port is not
+  held by the process tree, then restarts it (when `auto_restart` is on).
+- **`restart_delay`** / **`max_retries`** control backoff and the retry budget;
+  the counter resets once the service is healthy again.
+- **`kill_port_holder`** force-kills a *foreign* PID (one outside the service's
+  own process tree) that is occupying the port, so the restart can bind cleanly.
+  It never kills the service's own process. Defaults to `false`.
+
+Services without `auto_restart` and without a `health_check` are not
+supervised.
 
 ### Link Services
 

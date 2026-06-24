@@ -65,6 +65,25 @@ services:
       command: echo
       args: ["build step would run here"]
 
+  # Example: service with a port health check and auto-restart.
+  # The supervisor marks it unhealthy and restarts it (honoring restart_delay /
+  # max_retries) if the process is alive but no longer holds its local port —
+  # e.g. an SSH tunnel that hung after a network change or laptop sleep.
+  # tunnel:
+  #   label: "SSH Tunnel"
+  #   group: tunnels
+  #   command: ssh
+  #   args: ["-N", "-L", "6043:localhost:4310", "remote-host"]
+  #   auto_start: true
+  #   auto_restart: true
+  #   restart_delay: "5m"
+  #   max_retries: 20
+  #   health_check:
+  #     ports: [6043]
+  #     interval: "30s"
+  #     grace_period: "15s"
+  #     kill_port_holder: true
+
   # Example: service referencing a command via 'uses'
   # api:
   #   label: "API Server"
